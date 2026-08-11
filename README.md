@@ -98,6 +98,14 @@ The unique `(title, version)` constraint prevents overwriting an old version. Pu
 
 Build the frontend with `npm run build`, serve `frontend/dist` from Nginx, and proxy `/api` to a Gunicorn/Uvicorn FastAPI process running under systemd. Use managed or self-hosted PostgreSQL, an S3 bucket, HTTPS certificates at Nginx, a dedicated non-root service account, and production-only environment values in a protected systemd environment file. Point `CORS_ORIGINS` at the deployed site URL. This project does not rely on Vercel, Render, Firebase, Supabase, or GitHub Pages.
 
+## GitHub Pages frontend preparation
+
+The repository includes `.github/workflows/deploy-frontend-pages.yml`, which builds only `frontend/dist` on pushes to `main` and uploads it through the official GitHub Pages Actions workflow. It does not deploy FastAPI, PostgreSQL, MinIO, S3, or authentication infrastructure.
+
+The Vite base path is `/`, appropriate for the future custom domain `teamarcher.in`. Do not add a `CNAME` file or configure the custom domain/DNS until the team is ready. The build copies `index.html` to `404.html`, allowing GitHub Pages to serve the React application for direct requests to browser routes such as `/team` and `/presentations/example`.
+
+Set the public `VITE_API_BASE_URL` at build time. GitHub Actions is prepared to use `https://api.teamarcher.in`; this is a public API location, not a secret, and it does not require the backend to be live during the static build. Never put credentials or private values in a `VITE_*` variable.
+
 ## Browser compatibility
 
 Folder selection uses the browser’s `webkitdirectory` capability, supported by Chromium-based browsers. Dragging a folder itself is not equally consistent across browsers, so the page also provides an explicit **Add folder** control. Unsupported document formats remain downloadable and openable from the in-site viewer; PDFs, images and text display inside the portal.

@@ -4,7 +4,7 @@ import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams } 
 import './styles.css'
 import { siteContent as fallbackContent } from './siteContent'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
 type Content = typeof fallbackContent
 type User = { display_name:string; username:string; role:string; email?:string; must_change_password:boolean; avatar_url?:string|null; skills:string[]; show_email_public:boolean }
 type Member = {name:string;slug:string;role:string;skills:string[];avatar_url?:string|null;email?:string|null}
