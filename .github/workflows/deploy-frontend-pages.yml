@@ -23,6 +23,7 @@ jobs:
     env:
       # Public build-time configuration; the backend is deployed separately.
       VITE_API_BASE_URL: https://api.teamarcher.in
+      VITE_BASE_PATH: /teamarcher/
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -102,7 +102,9 @@ Build the frontend with `npm run build`, serve `frontend/dist` from Nginx, and p
 
 The repository includes `.github/workflows/deploy-frontend-pages.yml`, which builds only `frontend/dist` on pushes to `main` and uploads it through the official GitHub Pages Actions workflow. It does not deploy FastAPI, PostgreSQL, MinIO, S3, or authentication infrastructure.
 
-The Vite base path is `/`, appropriate for the future custom domain `teamarcher.in`. Do not add a `CNAME` file or configure the custom domain/DNS until the team is ready. The build copies `index.html` to `404.html`, allowing GitHub Pages to serve the React application for direct requests to browser routes such as `/team` and `/presentations/example`.
+GitHub Actions currently builds Vite with `VITE_BASE_PATH=/teamarcher/`, appropriate for the standard project URL `https://divyanshtripathi31.github.io/teamarcher/`. React Router uses Vite's generated base path, so navigation and refreshes remain inside `/teamarcher/`. The build copies `index.html` to `404.html`, allowing GitHub Pages to serve the React application for direct requests to browser routes such as `/teamarcher/team` and `/teamarcher/presentations/example`.
+
+When registrar verification is complete, switch the workflow's `VITE_BASE_PATH` to `/` before enabling the `teamarcher.in` custom domain. Do not add a `CNAME` file or configure custom-domain DNS until then.
 
 Set the public `VITE_API_BASE_URL` at build time. GitHub Actions is prepared to use `https://api.teamarcher.in`; this is a public API location, not a secret, and it does not require the backend to be live during the static build. Never put credentials or private values in a `VITE_*` variable.
 
