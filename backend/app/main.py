@@ -4,19 +4,21 @@ import re
 from typing import Optional
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from .config import get_settings
 from .database import Base, engine, get_db
 from .models import Presentation, PresentationAsset, ProfileAvatar, PublicProfile, SiteContent, User
 from .security import bearer, create_token, hash_password, token_subject, verify_password
 from .seed import seed
-from .storage import download_url, safe_key, upload
+from .storage import delete_many, download_url, local_file, safe_key, upload
 
 app = FastAPI(title="Archer Project Portal API", version="0.1.0")
 settings = get_settings()
-app.add_middleware(CORSMiddleware, allow_origins=[x.strip() for x in settings.cors_origins.split(",")], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=[x.strip() for x in settings.cors_origins.split(",")], allow_origin_regex=r"https?://(localhost|127\.0\.0\.1):\d+$", allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 
 ALLOWED = {".pdf", ".ppt", ".pptx", ".png", ".jpg", ".jpeg", ".doc", ".docx", ".txt", ".md"}
 class Login(BaseModel): username: str; password: str
@@ -24,6 +26,8 @@ class ProfileUpdate(BaseModel):
     display_name: str = Field(min_length=1, max_length=100)
     email: Optional[EmailStr] = None
     skills: list[str] = []
+    skill_groups: dict[str, list[str]] = {}
+    archer_focus: list[str] = []
     show_email_public: bool = False
 class PasswordUpdate(BaseModel): current_password: str; new_password: str = Field(min_length=10, max_length=128); confirm_password: str
 class SiteContentUpdate(BaseModel):
@@ -58,20 +62,39 @@ def content_admin(user: User = Depends(current_user)) -> User:
 def password_changed(user: User):
     if user.must_change_password:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Change your temporary password before uploading or publishing")
-def user_out(u: User):
+def profile_skills_data(profile: Optional[PublicProfile]):
     import json
+    if not profile: return {}, []
+    data = json.loads(profile.skills_json)
+    if isinstance(data, list): return {"Core skills": data}, []
+    if not isinstance(data, dict): return {}, []
+    groups_data = data.get("skill_groups", data)
+    focus_data = data.get("archer_focus", [])
+    groups = {str(category): [str(skill) for skill in skills] for category, skills in groups_data.items() if isinstance(skills, list)} if isinstance(groups_data, dict) else {}
+    focus = [str(item) for item in focus_data] if isinstance(focus_data, list) else []
+    return groups, focus
+def skill_groups_out(profile: Optional[PublicProfile]):
+    return profile_skills_data(profile)[0]
+def user_out(u: User):
     profile = u.public_profile
-    return {"id":u.id,"username":u.username,"display_name":u.display_name,"email":u.email,"role":u.role,"must_change_password":u.must_change_password,"avatar_url":download_url(u.avatar.file_storage_key) if u.avatar else None,"skills":json.loads(profile.skills_json) if profile else [],"show_email_public":profile.show_email_public if profile else False}
+    skill_groups, archer_focus = profile_skills_data(profile)
+    return {"id":u.id,"username":u.username,"display_name":u.display_name,"email":u.email,"role":u.role,"must_change_password":u.must_change_password,"avatar_url":download_url(u.avatar.file_storage_key) if u.avatar else None,"skills":[skill for skills in skill_groups.values() for skill in skills],"skill_groups":skill_groups,"archer_focus":archer_focus,"show_email_public":profile.show_email_public if profile else False}
 def member_slug(name: str) -> str: return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 def public_member_out(u: User, team_roles: dict):
-    import json
     profile = u.public_profile
-    return {"name":u.display_name,"slug":member_slug(u.display_name),"role":team_roles.get(u.display_name, "Team member"),"skills":json.loads(profile.skills_json) if profile else [],"avatar_url":download_url(u.avatar.file_storage_key) if u.avatar else None,"email":u.email if profile and profile.show_email_public else None}
+    skill_groups, archer_focus = profile_skills_data(profile)
+    return {"name":u.display_name,"slug":member_slug(u.display_name),"role":team_roles.get(u.display_name, "Team member"),"skills":[skill for skills in skill_groups.values() for skill in skills],"skill_groups":skill_groups,"archer_focus":archer_focus,"avatar_url":download_url(u.avatar.file_storage_key) if u.avatar else None,"email":u.email if profile and profile.show_email_public else None}
+@app.get("/api/files/{object_key:path}")
+def local_uploaded_file(object_key: str):
+    path = local_file(object_key)
+    if not path:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+    return FileResponse(path)
 def presentation_out(p: Presentation, include_url=False):
     data = {"id":p.id,"title":p.title,"slug":p.slug,"version":p.version,"presentation_date":p.presentation_date,"authors":p.authors,"change_summary":p.change_summary,"file_name":p.file_name,"published":p.published,"created_at":p.created_at,"created_by":p.created_by.display_name}
     if include_url:
         assets = p.assets or [PresentationAsset(relative_path=p.file_name, file_name=p.file_name, file_storage_key=p.file_storage_key, content_type=p.content_type, size_bytes=0)]
-        data["assets"] = [{"id":a.id,"relative_path":a.relative_path,"file_name":a.file_name,"content_type":a.content_type,"size_bytes":a.size_bytes,"file_url":download_url(a.file_storage_key)} for a in assets]
+        data["assets"] = [{"id":a.id,"relative_path":a.relative_path,"file_name":a.file_name,"content_type":a.content_type,"size_bytes":a.size_bytes,"file_url":download_url(a.file_storage_key),"download_url":download_url(a.file_storage_key,a.file_name)} for a in assets]
         data["file_url"] = data["assets"][0]["file_url"]
     return data
 def site_content_out(content: SiteContent):
@@ -82,7 +105,7 @@ def site_content_out(content: SiteContent):
 def health(): return {"status":"ok"}
 @app.post("/api/auth/login")
 def login(body: Login, db: Session = Depends(get_db)):
-    user = db.query(User).filter_by(username=body.username).first()
+    user = db.query(User).filter(func.upper(User.username) == body.username.strip().upper()).first()
     if not user or not verify_password(body.password, user.password_hash): raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid username or password")
     return {"access_token":create_token(user.id),"token_type":"bearer","user":user_out(user)}
 @app.get("/api/auth/me")
@@ -91,9 +114,15 @@ def me(user: User = Depends(current_user)): return user_out(user)
 def update_profile(body: ProfileUpdate, user: User = Depends(current_user), db: Session = Depends(get_db)):
     import json
     user.display_name, user.email = body.display_name, str(body.email) if body.email else None
-    clean_skills = list(dict.fromkeys(skill.strip()[:40] for skill in body.skills if skill.strip()))[:15]
-    if not user.public_profile: db.add(PublicProfile(user_id=user.id, skills_json=json.dumps(clean_skills), show_email_public=body.show_email_public))
-    else: user.public_profile.skills_json, user.public_profile.show_email_public = json.dumps(clean_skills), body.show_email_public
+    clean_groups = {category.strip()[:40]: list(dict.fromkeys(skill.strip()[:40] for skill in skills if skill.strip()))[:8] for category, skills in body.skill_groups.items() if category.strip()}
+    clean_groups = {category: skills for category, skills in clean_groups.items() if skills}
+    if not clean_groups:
+        clean_skills = list(dict.fromkeys(skill.strip()[:40] for skill in body.skills if skill.strip()))[:15]
+        clean_groups = {"Core skills": clean_skills} if clean_skills else {}
+    clean_focus = list(dict.fromkeys(item.strip()[:60] for item in body.archer_focus if item.strip()))[:8]
+    profile_data = json.dumps({"skill_groups": clean_groups, "archer_focus": clean_focus})
+    if not user.public_profile: db.add(PublicProfile(user_id=user.id, skills_json=profile_data, show_email_public=body.show_email_public))
+    else: user.public_profile.skills_json, user.public_profile.show_email_public = profile_data, body.show_email_public
     db.commit(); db.refresh(user); return user_out(user)
 @app.post("/api/users/me/password")
 def change_password(body: PasswordUpdate, user: User = Depends(current_user), db: Session = Depends(get_db)):
@@ -192,3 +221,11 @@ def publish(presentation_id: int, user: User = Depends(admin), db: Session = Dep
     p = db.get(Presentation, presentation_id)
     if not p: raise HTTPException(404, "Presentation not found")
     p.published = True; db.commit(); db.refresh(p); return presentation_out(p)
+@app.delete("/api/presentations/{presentation_id}", status_code=204)
+def delete_presentation(presentation_id: int, user: User = Depends(content_admin), db: Session = Depends(get_db)):
+    p = db.get(Presentation, presentation_id)
+    if not p: raise HTTPException(404, "Presentation not found")
+    keys = [p.file_storage_key, *(asset.file_storage_key for asset in p.assets)]
+    try: delete_many(keys)
+    except Exception: raise HTTPException(502, "Archive storage deletion failed; the archive was not removed")
+    db.delete(p); db.commit()

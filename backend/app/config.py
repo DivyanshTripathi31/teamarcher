@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     aws_secret_access_key: str
     s3_endpoint_url: Optional[str] = None
     s3_public_endpoint_url: Optional[str] = None
+    local_storage_dir: str = "/private/tmp/archer-object-storage"
+    local_storage_public_base_url: str = "http://127.0.0.1:8000"
     seed_initial_users: bool = False
     initial_user_passwords_json: str = "{}"
     max_upload_mb: int = 50

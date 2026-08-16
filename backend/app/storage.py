@@ -1,7 +1,29 @@
 import re, uuid
+from pathlib import Path
+from typing import Optional
+from urllib.parse import quote
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from .config import get_settings
+
+def local_fallback_enabled() -> bool:
+    endpoint = (get_settings().s3_endpoint_url or "").lower()
+    return endpoint.startswith("http://127.0.0.1") or endpoint.startswith("http://localhost")
+
+def local_path(key: str) -> Optional[Path]:
+    root = Path(get_settings().local_storage_dir).resolve()
+    candidate = (root / key).resolve()
+    if candidate == root or root not in candidate.parents:
+        return None
+    return candidate
+
+def local_file(key: str) -> Optional[Path]:
+    path = local_path(key)
+    return path if path and path.is_file() else None
+
+def local_url(key: str) -> str:
+    base_url = get_settings().local_storage_public_base_url.rstrip("/")
+    return f"{base_url}/api/files/{quote(key, safe='/')}"
 
 def client():
     s = get_settings()
@@ -18,6 +40,35 @@ def safe_key(title: str, version: str, filename: str) -> str:
     suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
     return f"presentations/{clean(title)}/{clean(version)}/{uuid.uuid4().hex}.{suffix}"
 def upload(key: str, data: bytes, content_type: str):
-    s = get_settings(); ensure_bucket(); client().put_object(Bucket=s.s3_bucket, Key=key, Body=data, ContentType=content_type)
-def download_url(key: str) -> str:
-    s = get_settings(); return client().generate_presigned_url("get_object", Params={"Bucket":s.s3_bucket,"Key":key}, ExpiresIn=3600)
+    s = get_settings()
+    try:
+        ensure_bucket()
+        client().put_object(Bucket=s.s3_bucket, Key=key, Body=data, ContentType=content_type)
+    except (BotoCoreError, ClientError, OSError):
+        if not local_fallback_enabled():
+            raise
+        path = local_path(key)
+        if not path:
+            raise ValueError("Invalid local storage key")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+def download_url(key: str, filename: Optional[str] = None) -> str:
+    if local_file(key):
+        return local_url(key)
+    s = get_settings()
+    params = {"Bucket":s.s3_bucket,"Key":key}
+    if filename: params["ResponseContentDisposition"] = f'attachment; filename="{filename.replace(chr(34), "")}"'
+    return client().generate_presigned_url("get_object", Params=params, ExpiresIn=3600)
+def delete_many(keys: list[str]):
+    unique_keys = list(dict.fromkeys(key for key in keys if key))
+    if not unique_keys: return
+    for key in unique_keys:
+        path = local_file(key)
+        if path:
+            path.unlink()
+    s = get_settings()
+    try:
+        client().delete_objects(Bucket=s.s3_bucket, Delete={"Objects":[{"Key":key} for key in unique_keys], "Quiet":True})
+    except (BotoCoreError, ClientError, OSError):
+        if not local_fallback_enabled():
+            raise
