@@ -153,6 +153,28 @@ bash /opt/teamarcher/deploy/phase4-s3-storage.sh teamarcher-production-files-271
 
 It updates only `S3_BUCKET` and `AWS_REGION` in the protected runtime file, removes any static credential or development endpoint variables without printing them, restarts FastAPI, and verifies a temporary private object can be put, read, and deleted using the `teamarcher` service account. The temporary object is removed before the script finishes.
 
+### Production frontend integration and end-to-end verification (Phase 5)
+
+The frontend reads `VITE_API_BASE_URL` at build time (without a trailing slash) and stores only the signed bearer token in browser `localStorage`. Every authoritative profile, archive, upload, and download value is obtained from the API; production API failures are shown in the interface instead of silently replacing live team/archive data with sample records.
+
+Until the custom domain and HTTPS are ready, use the temporary EC2 HTTP API only from an HTTP local frontend session:
+
+```bash
+cd frontend
+VITE_API_BASE_URL=http://ec2-65-2-74-233.ap-south-1.compute.amazonaws.com/api npm run dev
+```
+
+Do **not** deploy a build using that HTTP API URL to GitHub Pages: the Pages site is HTTPS and browsers will block its mixed-content requests. The existing Pages workflow must continue to use the future HTTPS API URL until TLS is configured.
+
+For a safe real-data verification, pull the current backend checkout on EC2 and run:
+
+```bash
+sudo git -C /opt/teamarcher pull --ff-only origin main
+python3 /opt/teamarcher/deploy/phase5-production-verification.py
+```
+
+The script securely prompts for an already password-changed ADMIN account and an INSTRUCTOR account. It verifies CORS, login, `/me`, temporary-password status, role boundaries, a real one-file upload/publish/read/delete cycle through RDS and private S3, and persistence across a service restart. It never prints or persists passwords, JWTs, database URLs, or AWS credentials. Its uniquely named temporary archive is deleted automatically, including its S3 object.
+
 ## GitHub Pages frontend preparation
 
 The repository includes `.github/workflows/deploy-frontend-pages.yml`, which builds only `frontend/dist` on pushes to `main` and uploads it through the official GitHub Pages Actions workflow. It does not deploy FastAPI, PostgreSQL, MinIO, S3, or authentication infrastructure.

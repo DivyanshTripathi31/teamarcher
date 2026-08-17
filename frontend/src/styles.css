@@ -208,6 +208,7 @@ button:disabled { cursor: not-allowed; opacity: .55; transform: none; }
 }
 .notice { border: 1px solid var(--accent); background: var(--accent-soft); color: var(--ink); }
 .error { border: 1px solid #a73428; background: #ffe7e2; color: #8b2319; }
+.api-status { width: min(100% - 48px, var(--content)); margin: 16px auto 0; }
 
 /* Home */
 .hero {
