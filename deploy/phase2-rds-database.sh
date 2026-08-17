@@ -201,7 +201,7 @@ sudo -n systemctl is-active --quiet "$SERVICE_NAME"
 sudo -n systemctl is-active --quiet nginx
 
 echo "Verifying the application role can query RDS…"
-sudo -n -u "$SERVICE_USER" bash -c 'set -a; . /etc/teamarcher/backend.env; exec "$1" -c "from sqlalchemy import text; from app.database import engine; connection = engine.connect(); print(connection.scalar(text(\"SELECT current_user\"))); connection.close()"' _ "$VENV/bin/python"
+sudo -n -u "$SERVICE_USER" bash -c 'cd "$1" || exit 1; set -a; . /etc/teamarcher/backend.env; exec "$2" -c "from sqlalchemy import text; from app.database import engine; connection = engine.connect(); print(connection.scalar(text(\"SELECT current_user\"))); connection.close()"' _ "$BACKEND_DIR" "$VENV/bin/python"
 echo "Verifying service and reverse proxy…"
 curl --fail --silent --show-error http://127.0.0.1:8000/health
 echo
