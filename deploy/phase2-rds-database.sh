@@ -89,24 +89,35 @@ if sudo -n grep -q '^DATABASE_URL=' "$ENV_FILE"; then
   app_url_configured=true
 fi
 
-if [[ "$app_role_exists" == "f" ]]; then
-  if [[ "$app_url_configured" == true ]]; then
-    echo "DATABASE_URL already exists but ${APP_ROLE} does not. Refusing to replace credentials automatically." >&2
-    exit 1
-  fi
+if [[ "$app_url_configured" == true && "$app_role_exists" == "f" ]]; then
+  echo "DATABASE_URL already exists but ${APP_ROLE} does not. Refusing to replace credentials automatically." >&2
+  exit 1
+fi
+
+# A prior attempt can create the application role before a later migration
+# step fails. When no application URL has ever been stored, safely retain that
+# role and set a fresh random password for the first managed configuration.
+if [[ "$app_url_configured" == false ]]; then
   app_password="$(openssl rand -hex 32)"
-  echo "Creating the least-privilege application role…"
-  admin_psql -v app_password="$app_password" <<'SQL'
+  if [[ "$app_role_exists" == "f" ]]; then
+    echo "Creating the least-privilege application role…"
+    admin_psql -v app_password="$app_password" <<'SQL'
 SELECT format(
   'CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION PASSWORD %L',
   'teamarcher_app', :'app_password'
 ) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'teamarcher_app')
 \gexec
 SQL
-elif [[ "$app_url_configured" == false ]]; then
-  echo "${APP_ROLE} already exists but no managed application DATABASE_URL was found." >&2
-  echo "Refusing to rotate an unknown password; add the existing app URL securely or drop/recreate the role deliberately." >&2
-  exit 1
+  else
+    echo "Reusing the existing application role with a fresh managed credential…"
+    admin_psql -v app_password="$app_password" <<'SQL'
+SELECT format(
+  'ALTER ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION PASSWORD %L',
+  'teamarcher_app', :'app_password'
+)
+\gexec
+SQL
+  fi
 fi
 
 # Provide the migration process an ephemeral password file rather than placing
