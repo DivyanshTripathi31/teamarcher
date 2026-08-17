@@ -108,6 +108,14 @@ The repository includes safe templates for the first EC2 phase:
 
 For this phase, `GET /health` is intentionally database-independent. If PostgreSQL has not yet been provisioned, the service starts in health-only mode; database-backed routes remain unavailable until the separate PostgreSQL phase. Object storage is likewise disabled until the separate S3 phase supplies real configuration. This is deliberate: do not add placeholder production users, database data, or AWS credentials solely to make the process start.
 
+On the new EC2 host, after cloning the repository and installing `nginx` and `python3-venv`, run the idempotent foundation script as `ubuntu`:
+
+```bash
+bash /opt/teamarcher/deploy/phase1-ec2-backend.sh ec2-65-2-74-233.ap-south-1.compute.amazonaws.com
+```
+
+It creates the virtual environment, generates the JWT only in `/etc/teamarcher/backend.env` on first run, starts the non-root service, installs the Nginx site, and verifies loopback, Nginx, and public `/health`. It never changes the EC2 security group or opens port 8000/5432.
+
 ## GitHub Pages frontend preparation
 
 The repository includes `.github/workflows/deploy-frontend-pages.yml`, which builds only `frontend/dist` on pushes to `main` and uploads it through the official GitHub Pages Actions workflow. It does not deploy FastAPI, PostgreSQL, MinIO, S3, or authentication infrastructure.
