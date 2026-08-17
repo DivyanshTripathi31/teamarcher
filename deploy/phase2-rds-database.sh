@@ -196,9 +196,23 @@ else
   echo "Initial accounts were not seeded. The application’s site-content bootstrap will still run."
 fi
 
+wait_for_backend() {
+  local attempt
+  local attempts=15
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    if curl --fail --silent http://127.0.0.1:8000/health >/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Backend did not become ready within ${attempts} seconds after restart." >&2
+  return 1
+}
+
 sudo -n systemctl restart "$SERVICE_NAME"
 sudo -n systemctl is-active --quiet "$SERVICE_NAME"
 sudo -n systemctl is-active --quiet nginx
+wait_for_backend
 
 echo "Verifying the application role can query RDS…"
 sudo -n -u "$SERVICE_USER" bash -c 'cd "$1" || exit 1; set -a; . /etc/teamarcher/backend.env; exec "$2" -c "from sqlalchemy import text; from app.database import engine; connection = engine.connect(); print(connection.scalar(text(\"SELECT current_user\"))); connection.close()"' _ "$BACKEND_DIR" "$VENV/bin/python"
