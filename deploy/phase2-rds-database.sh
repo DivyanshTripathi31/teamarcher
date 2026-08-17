@@ -103,7 +103,7 @@ if [[ "$app_url_configured" == false ]]; then
     echo "Creating the least-privilege application role…"
     admin_psql -v app_password="$app_password" <<'SQL'
 SELECT format(
-  'CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION PASSWORD %L',
+  'CREATE ROLE %I LOGIN PASSWORD %L',
   'teamarcher_app', :'app_password'
 ) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'teamarcher_app')
 \gexec
@@ -112,7 +112,7 @@ SQL
     echo "Reusing the existing application role with a fresh managed credential…"
     admin_psql -v app_password="$app_password" <<'SQL'
 SELECT format(
-  'ALTER ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION PASSWORD %L',
+  'ALTER ROLE %I PASSWORD %L',
   'teamarcher_app', :'app_password'
 )
 \gexec
