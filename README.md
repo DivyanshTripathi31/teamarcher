@@ -116,6 +116,19 @@ bash /opt/teamarcher/deploy/phase1-ec2-backend.sh ec2-65-2-74-233.ap-south-1.com
 
 It creates the virtual environment, generates the JWT only in `/etc/teamarcher/backend.env` on first run, starts the non-root service, installs the Nginx site, and verifies loopback, Nginx, and public `/health`. It never changes the EC2 security group or opens port 8000/5432.
 
+### RDS database setup (Phase 2)
+
+The existing backend models are now captured in `backend/alembic/` as the initial Alembic migration. On production, application startup uses migrations rather than `create_all`; `DATABASE_AUTO_CREATE=false` is enforced by the Phase 2 script.
+
+After confirming private RDS reachability from EC2 and creating the administrative `teamarcher_admin` role, pull the current checkout and run this **only from the EC2 SSH session**:
+
+```bash
+sudo git -C /opt/teamarcher pull --ff-only origin main
+bash /opt/teamarcher/deploy/phase2-rds-database.sh your-rds-endpoint.ap-south-1.rds.amazonaws.com
+```
+
+The script securely prompts on EC2 for the `teamarcher_admin` password. It confirms TLS, applies Alembic migrations, creates a separate least-privilege `teamarcher_app` role, writes only that application connection URL to `/etc/teamarcher/backend.env`, optionally prompts for the five existing seed-account passwords, restarts the non-root service, and verifies both a real database query and `/health`. Passwords are never printed or added to this repository. It refuses to overwrite an existing unversioned schema or unknown application credential.
+
 ## GitHub Pages frontend preparation
 
 The repository includes `.github/workflows/deploy-frontend-pages.yml`, which builds only `frontend/dist` on pushes to `main` and uploads it through the official GitHub Pages Actions workflow. It does not deploy FastAPI, PostgreSQL, MinIO, S3, or authentication infrastructure.

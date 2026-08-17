@@ -14,7 +14,7 @@ from .config import get_settings
 from .database import Base, engine, get_db
 from .models import Presentation, PresentationAsset, ProfileAvatar, PublicProfile, SiteContent, User
 from .security import bearer, create_token, hash_password, token_subject, verify_password
-from .seed import seed
+from .bootstrap import bootstrap_database
 from .storage import delete_many, download_url, local_file, safe_key, upload
 
 app = FastAPI(title="Archer Project Portal API", version="0.1.0")
@@ -48,12 +48,9 @@ def startup():
     # provisioned. Database-backed routes remain unavailable until then, while
     # /health continues to report that the process and reverse proxy are alive.
     try:
-        Base.metadata.create_all(bind=engine)
-        with Session(engine) as db:
-            seed(db)
-            if not db.get(SiteContent, 1):
-                db.add(SiteContent(id=1, project_name="ARCHER", tagline="A living record of our software engineering project.", description="Archer brings the project’s planning, progress, and presentation history into one clear, permanent public portal.", problem="Add the real problem statement for Archer here.", objectives="Add the specific, measurable objectives the team agrees on.", intended_users="Add the people Archer is being built for.", core_features="Add the key capabilities that define Archer.", roles_json='{"Divyansh Tripathi":"Role to be assigned","Lavish Gambhir":"Role to be assigned","Mehardeep Singh":"Role to be assigned","Vidit Gupta":"Role to be assigned"}'))
-                db.commit()
+        if settings.database_auto_create:
+            Base.metadata.create_all(bind=engine)
+        bootstrap_database()
     except SQLAlchemyError:
         logger.warning("Database is unavailable; starting in health-only mode until PostgreSQL is configured.")
 
