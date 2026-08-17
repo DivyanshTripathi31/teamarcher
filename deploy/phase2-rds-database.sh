@@ -23,16 +23,23 @@ if [[ ! "$RDS_HOST" =~ ^[A-Za-z0-9.-]+$ || ! "$DATABASE_NAME" =~ ^[A-Za-z0-9_]+$
   echo "RDS host or database name contains unsupported characters." >&2
   exit 2
 fi
-if [[ ! -x "$VENV/bin/python" || ! -x "$VENV/bin/alembic" || ! -f "$ENV_FILE" ]]; then
-  echo "Phase 1 is incomplete: expected virtual environment and $ENV_FILE." >&2
+if ! sudo -n true; then
+  echo "Passwordless sudo is required; refusing to prompt interactively." >&2
+  exit 1
+fi
+if ! sudo -n -u "$SERVICE_USER" test -x "$VENV/bin/python" || ! sudo -n -u "$SERVICE_USER" test -x "$VENV/bin/alembic"; then
+  echo "Phase 1 is incomplete: the $SERVICE_USER account cannot execute the expected virtual-environment binaries." >&2
+  exit 1
+fi
+# The environment file is deliberately root-owned and group-readable only by
+# the service account. Check it through non-interactive sudo, never by the
+# unprivileged invoking user and never by weakening its permissions.
+if ! sudo -n -u "$SERVICE_USER" test -f "$ENV_FILE" || ! sudo -n -u "$SERVICE_USER" test -r "$ENV_FILE"; then
+  echo "Phase 1 is incomplete: $ENV_FILE is missing or unreadable by $SERVICE_USER." >&2
   exit 1
 fi
 if ! command -v psql >/dev/null 2>&1; then
   echo "PostgreSQL client (psql) is required; install it before running Phase 2." >&2
-  exit 1
-fi
-if ! sudo -n true; then
-  echo "Passwordless sudo is required; refusing to prompt interactively." >&2
   exit 1
 fi
 
