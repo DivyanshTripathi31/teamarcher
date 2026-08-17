@@ -60,12 +60,13 @@ Backend values are documented in `backend/.env.example`:
 - `DATABASE_URL` — PostgreSQL SQLAlchemy URL
 - `JWT_SECRET` — long, random production secret
 - `CORS_ORIGINS` — comma-separated permitted frontend origins
-- `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` — object storage configuration
+- `S3_BUCKET`, `AWS_REGION` — object storage configuration in production; EC2 uses its instance role
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` — local MinIO development only; never set these in production
 - `S3_ENDPOINT_URL` — set for MinIO/other compatible storage; omit for AWS S3
 - `SEED_INITIAL_USERS`, `INITIAL_USER_PASSWORDS_JSON` — one-time secure initial-user bootstrap only
 - `MAX_UPLOAD_MB` — server-enforced file size limit
 
-For AWS, create a private bucket and an IAM principal whose permissions are restricted to `s3:PutObject`, `s3:GetObject`, and `s3:HeadBucket` on that bucket. Do not make the bucket public: download access is delivered by short-lived presigned URLs.
+For AWS, create a private bucket and attach a least-privilege IAM role to EC2. The role needs bucket-scoped list/head access and object `PutObject`, `GetObject`, and `DeleteObject` permissions. Do not make the bucket public: download access is delivered by short-lived presigned URLs.
 
 ## Updating public website copy
 
@@ -138,6 +139,19 @@ python3 /opt/teamarcher/deploy/phase3-auth-verification.py
 ```
 
 The current frontend clears its JWT from browser `localStorage` on logout. There is no backend logout or token-revocation endpoint, so an issued JWT remains valid until its configured expiry, including after a password change. This is the current intended implementation and should be revisited only if server-side session revocation becomes a product requirement.
+
+### Private S3 storage (Phase 4)
+
+Production files are stored in a private S3 bucket. The backend generates collision-safe object keys, retains the original filename and content type in PostgreSQL, returns short-lived presigned read/download URLs, and deletes stored objects only through the existing authorized delete route. The EC2 application uses its attached IAM role through boto3's default credential provider chain; no AWS access keys belong in Git or `/etc/teamarcher/backend.env`.
+
+After the EC2 role has bucket-scoped `ListBucket`, `GetObject`, `PutObject`, and `DeleteObject` permissions, run the idempotent verification from the EC2 SSH session:
+
+```bash
+sudo git -C /opt/teamarcher pull --ff-only origin main
+bash /opt/teamarcher/deploy/phase4-s3-storage.sh teamarcher-production-files-271643857266-ap-south-1-an ap-south-1
+```
+
+It updates only `S3_BUCKET` and `AWS_REGION` in the protected runtime file, removes any static credential or development endpoint variables without printing them, restarts FastAPI, and verifies a temporary private object can be put, read, and deleted using the `teamarcher` service account. The temporary object is removed before the script finishes.
 
 ## GitHub Pages frontend preparation
 

@@ -9,9 +9,9 @@ class Settings(BaseSettings):
     jwt_secret: str
     jwt_expire_minutes: int = 480
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
-    # Storage is intentionally optional while the backend foundation is being
-    # deployed. Uploads stay unavailable until the separate S3 phase provides
-    # real bucket credentials.
+    # A production EC2 host authenticates to S3 through its IAM role/default
+    # AWS credential provider chain. Do not place access keys in production
+    # configuration. Static credentials are retained only for local MinIO.
     s3_bucket: str = ""
     aws_region: str = "us-east-1"
     aws_access_key_id: str = ""
