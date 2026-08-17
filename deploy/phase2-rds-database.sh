@@ -187,7 +187,7 @@ with os.fdopen(fd, "w", encoding="utf-8") as handle:
     json.dump(passwords, handle)
 PY
   sudo -n install -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0600 "$seed_file" "$service_seed_file"
-  sudo -n -u "$SERVICE_USER" bash -c 'set -a; . /etc/teamarcher/backend.env; export SEED_INITIAL_USERS=true INITIAL_USER_PASSWORDS_JSON="$(cat "$1")"; exec "$2" -c "from app.bootstrap import bootstrap_database; bootstrap_database()"' _ "$service_seed_file" "$VENV/bin/python"
+  sudo -n -u "$SERVICE_USER" bash -c 'cd "$1" || exit 1; set -a; . /etc/teamarcher/backend.env; export SEED_INITIAL_USERS=true INITIAL_USER_PASSWORDS_JSON="$(cat "$2")"; exec "$3" -c "from app.bootstrap import bootstrap_database; bootstrap_database()"' _ "$BACKEND_DIR" "$service_seed_file" "$VENV/bin/python"
   rm -f "$seed_file"
   seed_file=""
   sudo -n rm -f "$service_seed_file"
