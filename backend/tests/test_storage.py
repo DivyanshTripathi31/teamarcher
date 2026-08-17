@@ -24,9 +24,25 @@ def settings(**overrides):
 class StorageTests(unittest.TestCase):
     @patch("app.storage.get_settings", return_value=settings())
     @patch("app.storage.boto3.client")
-    def test_ec2_client_uses_default_credential_chain(self, boto_client, _get_settings):
+    def test_ec2_client_uses_default_credential_chain_with_regional_sigv4(self, boto_client, _get_settings):
         storage.client()
-        boto_client.assert_called_once_with("s3", region_name="ap-south-1")
+        boto_client.assert_called_once()
+        args, kwargs = boto_client.call_args
+        self.assertEqual(args, ("s3",))
+        self.assertEqual(kwargs["region_name"], "ap-south-1")
+        self.assertEqual(kwargs["endpoint_url"], "https://s3.ap-south-1.amazonaws.com")
+        self.assertEqual(kwargs["config"].signature_version, "s3v4")
+        self.assertEqual(kwargs["config"].s3["addressing_style"], "virtual")
+        self.assertNotIn("aws_access_key_id", kwargs)
+        self.assertNotIn("aws_secret_access_key", kwargs)
+
+    @patch("app.storage.get_settings", return_value=settings(s3_endpoint_url="http://localhost:9000"))
+    @patch("app.storage.boto3.client")
+    def test_local_s3_endpoint_is_preserved(self, boto_client, _get_settings):
+        storage.client()
+        _args, kwargs = boto_client.call_args
+        self.assertEqual(kwargs["endpoint_url"], "http://localhost:9000")
+        self.assertNotIn("config", kwargs)
 
     @patch("app.storage.get_settings", return_value=settings())
     def test_production_bucket_is_not_created_by_application(self, _get_settings):

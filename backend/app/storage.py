@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
 import boto3
+from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from .config import get_settings
 
@@ -41,6 +42,14 @@ def client():
     client_args = {"region_name": s.aws_region}
     if s.s3_endpoint_url:
         client_args["endpoint_url"] = s.s3_endpoint_url
+    else:
+        # Keep the generated presigned URL bound to the bucket's regional AWS
+        # endpoint and explicitly use AWS Signature Version 4.  Relying on
+        # endpoint/signature defaults can produce a URL for a different S3
+        # endpoint in some botocore environments, even though direct IAM-role
+        # operations from the server itself succeed.
+        client_args["endpoint_url"] = f"https://s3.{s.aws_region}.amazonaws.com"
+        client_args["config"] = Config(signature_version="s3v4", s3={"addressing_style": "virtual"})
 
     # Static credentials remain supported only for local MinIO development.
     # Omitting these arguments entirely is essential for EC2 IAM-role auth.

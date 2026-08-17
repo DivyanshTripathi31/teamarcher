@@ -14,8 +14,10 @@ import sys
 import time
 from datetime import date, datetime, timezone
 from getpass import getpass
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+from xml.etree import ElementTree
 
 
 API_BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1/api").rstrip("/")
@@ -76,12 +78,22 @@ def wait_for_backend() -> None:
     raise SystemExit("FAILED: backend did not become ready after restart")
 
 
-def download(url: str) -> tuple[int, bytes]:
+def download(url: str) -> tuple[int, bytes, str | None]:
     try:
         with urlopen(url, timeout=20) as response:
-            return response.status, response.read()
+            return response.status, response.read(), None
     except HTTPError as error:
-        return error.code, error.read()
+        body = error.read()
+        code = None
+        try:
+            code = ElementTree.fromstring(body).findtext("{*}Code")
+        except ElementTree.ParseError:
+            pass
+        host = urlparse(url).hostname or "unknown-host"
+        detail = f"HTTP {error.code} from {host}" + (f" (S3 {code})" if code else "")
+        return error.code, body, detail
+    except URLError as error:
+        return 0, b"", f"transport error while requesting {urlparse(url).hostname or 'unknown-host'}: {error.reason}"
 
 
 def main() -> None:
@@ -157,10 +169,10 @@ def main() -> None:
         file_url = asset.get("file_url", "")
         download_url = asset.get("download_url", "")
         require(file_url.startswith("https://") and download_url.startswith("https://"), "private S3 reads use HTTPS presigned URLs")
-        status, body = download(file_url)
-        require(status == 200 and body == marker, "presigned preview URL retrieves the uploaded S3 object")
-        status, body = download(download_url)
-        require(status == 200 and body == marker, "presigned download URL retrieves the uploaded S3 object")
+        status, body, detail = download(file_url)
+        require(status == 200 and body == marker, f"presigned preview URL retrieves the uploaded S3 object{f' ({detail})' if detail else ''}")
+        status, body, detail = download(download_url)
+        require(status == 200 and body == marker, f"presigned download URL retrieves the uploaded S3 object{f' ({detail})' if detail else ''}")
 
         status, records = request("/presentations")
         require(status == 200 and any(record.get("slug") == created["slug"] for record in records), "published archive entry is visible through the public API")
@@ -170,7 +182,7 @@ def main() -> None:
         presentation_id = None
         status, _ = request(f"/presentations/{created['slug']}")
         require(status == 404, "deleted archive metadata is no longer public")
-        status, _ = download(file_url)
+        status, _, _ = download(file_url)
         require(status in {403, 404}, "deleted archive object is no longer retrievable with its former presigned URL")
     finally:
         if presentation_id is not None:
