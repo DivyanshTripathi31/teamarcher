@@ -129,6 +129,16 @@ bash /opt/teamarcher/deploy/phase2-rds-database.sh your-rds-endpoint.ap-south-1.
 
 The script securely prompts on EC2 for the `teamarcher_admin` password. It confirms TLS, applies Alembic migrations, creates a separate least-privilege `teamarcher_app` role, writes only that application connection URL to `/etc/teamarcher/backend.env`, optionally prompts for the five existing seed-account passwords, restarts the non-root service, and verifies both a real database query and `/health`. Passwords are never printed or added to this repository. It refuses to overwrite an existing unversioned schema or unknown application credential.
 
+### Production authentication verification (Phase 3)
+
+`deploy/phase3-auth-verification.py` is an interactive, EC2-only verification script. It calls the production API through local Nginx (`http://127.0.0.1/api`) and keeps passwords and JWTs only in process memory. It checks rejected and successful login, authenticated identity, temporary-password enforcement, password change, old-password rejection, ADMIN/INSTRUCTOR authorization boundaries, and the current stateless JWT behavior.
+
+```bash
+python3 /opt/teamarcher/deploy/phase3-auth-verification.py
+```
+
+The current frontend clears its JWT from browser `localStorage` on logout. There is no backend logout or token-revocation endpoint, so an issued JWT remains valid until its configured expiry, including after a password change. This is the current intended implementation and should be revisited only if server-side session revocation becomes a product requirement.
+
 ## GitHub Pages frontend preparation
 
 The repository includes `.github/workflows/deploy-frontend-pages.yml`, which builds only `frontend/dist` on pushes to `main` and uploads it through the official GitHub Pages Actions workflow. It does not deploy FastAPI, PostgreSQL, MinIO, S3, or authentication infrastructure.
