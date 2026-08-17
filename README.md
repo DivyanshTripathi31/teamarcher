@@ -98,6 +98,16 @@ The unique `(title, version)` constraint prevents overwriting an old version. Pu
 
 Build the frontend with `npm run build`, serve `frontend/dist` from Nginx, and proxy `/api` to a Gunicorn/Uvicorn FastAPI process running under systemd. Use managed or self-hosted PostgreSQL, an S3 bucket, HTTPS certificates at Nginx, a dedicated non-root service account, and production-only environment values in a protected systemd environment file. Point `CORS_ORIGINS` at the deployed site URL. This project does not rely on Vercel, Render, Firebase, Supabase, or GitHub Pages.
 
+### EC2 backend foundation (Phase 1)
+
+The repository includes safe templates for the first EC2 phase:
+
+- `deploy/systemd/teamarcher-backend.service` runs Uvicorn as the non-root `teamarcher` account and binds it only to `127.0.0.1:8000`.
+- `deploy/nginx/teamarcher-backend.conf` exposes only `/health` and `/api/` through Nginx on port 80.
+- `deploy/teamarcher-backend.env.example` documents the private `/etc/teamarcher/backend.env` file. The real file must remain on the server with restrictive permissions and must never be committed.
+
+For this phase, `GET /health` is intentionally database-independent. If PostgreSQL has not yet been provisioned, the service starts in health-only mode; database-backed routes remain unavailable until the separate PostgreSQL phase. Object storage is likewise disabled until the separate S3 phase supplies real configuration. This is deliberate: do not add placeholder production users, database data, or AWS credentials solely to make the process start.
+
 ## GitHub Pages frontend preparation
 
 The repository includes `.github/workflows/deploy-frontend-pages.yml`, which builds only `frontend/dist` on pushes to `main` and uploads it through the official GitHub Pages Actions workflow. It does not deploy FastAPI, PostgreSQL, MinIO, S3, or authentication infrastructure.

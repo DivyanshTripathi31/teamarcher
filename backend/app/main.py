@@ -1,4 +1,5 @@
 from datetime import date
+import logging
 from pathlib import Path
 import re
 from typing import Optional
@@ -6,7 +7,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, sta
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from .config import get_settings
@@ -18,6 +19,7 @@ from .storage import delete_many, download_url, local_file, safe_key, upload
 
 app = FastAPI(title="Archer Project Portal API", version="0.1.0")
 settings = get_settings()
+logger = logging.getLogger(__name__)
 app.add_middleware(CORSMiddleware, allow_origins=[x.strip() for x in settings.cors_origins.split(",")], allow_origin_regex=r"https?://(localhost|127\.0\.0\.1):\d+$", allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 
 ALLOWED = {".pdf", ".ppt", ".pptx", ".png", ".jpg", ".jpeg", ".doc", ".docx", ".txt", ".md"}
@@ -42,12 +44,18 @@ class SiteContentUpdate(BaseModel):
 
 @app.on_event("startup")
 def startup():
-    Base.metadata.create_all(bind=engine)
-    with Session(engine) as db:
-        seed(db)
-        if not db.get(SiteContent, 1):
-            db.add(SiteContent(id=1, project_name="ARCHER", tagline="A living record of our software engineering project.", description="Archer brings the project’s planning, progress, and presentation history into one clear, permanent public portal.", problem="Add the real problem statement for Archer here.", objectives="Add the specific, measurable objectives the team agrees on.", intended_users="Add the people Archer is being built for.", core_features="Add the key capabilities that define Archer.", roles_json='{"Divyansh Tripathi":"Role to be assigned","Lavish Gambhir":"Role to be assigned","Mehardeep Singh":"Role to be assigned","Vidit Gupta":"Role to be assigned"}'))
-            db.commit()
+    # The foundation service must stay observable before PostgreSQL is
+    # provisioned. Database-backed routes remain unavailable until then, while
+    # /health continues to report that the process and reverse proxy are alive.
+    try:
+        Base.metadata.create_all(bind=engine)
+        with Session(engine) as db:
+            seed(db)
+            if not db.get(SiteContent, 1):
+                db.add(SiteContent(id=1, project_name="ARCHER", tagline="A living record of our software engineering project.", description="Archer brings the project’s planning, progress, and presentation history into one clear, permanent public portal.", problem="Add the real problem statement for Archer here.", objectives="Add the specific, measurable objectives the team agrees on.", intended_users="Add the people Archer is being built for.", core_features="Add the key capabilities that define Archer.", roles_json='{"Divyansh Tripathi":"Role to be assigned","Lavish Gambhir":"Role to be assigned","Mehardeep Singh":"Role to be assigned","Vidit Gupta":"Role to be assigned"}'))
+                db.commit()
+    except SQLAlchemyError:
+        logger.warning("Database is unavailable; starting in health-only mode until PostgreSQL is configured.")
 
 def current_user(credentials=Depends(bearer), db: Session = Depends(get_db)) -> User:
     user = db.get(User, token_subject(credentials))
@@ -101,6 +109,7 @@ def site_content_out(content: SiteContent):
     import json
     return {"projectName":content.project_name,"tagline":content.tagline,"description":content.description,"problem":content.problem,"objectives":content.objectives,"intendedUsers":content.intended_users,"coreFeatures":content.core_features,"roles":json.loads(content.roles_json)}
 
+@app.get("/health", include_in_schema=False)
 @app.get("/api/health")
 def health(): return {"status":"ok"}
 @app.post("/api/auth/login")

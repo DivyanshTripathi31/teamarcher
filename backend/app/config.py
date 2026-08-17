@@ -8,10 +8,13 @@ class Settings(BaseSettings):
     jwt_secret: str
     jwt_expire_minutes: int = 480
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
-    s3_bucket: str
+    # Storage is intentionally optional while the backend foundation is being
+    # deployed. Uploads stay unavailable until the separate S3 phase provides
+    # real bucket credentials.
+    s3_bucket: str = ""
     aws_region: str = "us-east-1"
-    aws_access_key_id: str
-    aws_secret_access_key: str
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
     s3_endpoint_url: Optional[str] = None
     s3_public_endpoint_url: Optional[str] = None
     local_storage_dir: str = "/private/tmp/archer-object-storage"

@@ -1,0 +1,21 @@
+[Unit]
+Description=Team Archer FastAPI backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=teamarcher
+Group=teamarcher
+WorkingDirectory=/opt/teamarcher/backend
+EnvironmentFile=/etc/teamarcher/backend.env
+ExecStart=/opt/teamarcher/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/teamarcher
+
+[Install]
+WantedBy=multi-user.target
