@@ -50,7 +50,6 @@ if [[ -z "$admin_password" ]]; then
   exit 1
 fi
 
-admin_dsn="postgresql://${ADMIN_ROLE}@${RDS_HOST}:${RDS_PORT}/${DATABASE_NAME}?sslmode=require"
 local_pgpass="$(mktemp)"
 service_pgpass="/var/lib/teamarcher/.phase2-rds-pgpass.$$"
 app_password=""
@@ -65,9 +64,13 @@ cleanup() {
 }
 trap cleanup EXIT
 chmod 0600 "$local_pgpass"
+# Keep the administrative credential in a mode-0600 password file for every
+# psql invocation. Do not pass it via PGPASSWORD, where another same-user
+# process could inspect the child process environment.
+printf '%s:%s:%s:%s:%s\n' "$RDS_HOST" "$RDS_PORT" "$DATABASE_NAME" "$ADMIN_ROLE" "$admin_password" >"$local_pgpass"
 
 admin_psql() {
-  PGPASSWORD="$admin_password" PGSSLMODE=require psql --no-psqlrc --set=ON_ERROR_STOP=1 "$admin_dsn" "$@"
+  PGPASSFILE="$local_pgpass" PGSSLMODE=require psql --no-psqlrc --set=ON_ERROR_STOP=1 "postgresql://${ADMIN_ROLE}@${RDS_HOST}:${RDS_PORT}/${DATABASE_NAME}?sslmode=require" "$@"
 }
 
 echo "Checking the TLS database connection…"
@@ -120,9 +123,8 @@ SQL
   fi
 fi
 
-# Provide the migration process an ephemeral password file rather than placing
-# the administrative password in command arguments or /etc/teamarcher.
-printf '%s:%s:%s:%s:%s\n' "$RDS_HOST" "$RDS_PORT" "$DATABASE_NAME" "$ADMIN_ROLE" "$admin_password" >"$local_pgpass"
+# Provide the migration process the same ephemeral password file rather than
+# placing the administrative password in command arguments or /etc/teamarcher.
 sudo -n install -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0600 "$local_pgpass" "$service_pgpass"
 
 echo "Running Alembic migrations as ${ADMIN_ROLE} over TLS…"

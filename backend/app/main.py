@@ -23,6 +23,19 @@ logger = logging.getLogger(__name__)
 app.add_middleware(CORSMiddleware, allow_origins=[x.strip() for x in settings.cors_origins.split(",")], allow_origin_regex=r"https?://(localhost|127\.0\.0\.1):\d+$", allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 
 ALLOWED = {".pdf", ".ppt", ".pptx", ".png", ".jpg", ".jpeg", ".doc", ".docx", ".txt", ".md"}
+CONTENT_TYPES = {
+    ".pdf": "application/pdf",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".txt": "text/plain; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+}
+AVATAR_CONTENT_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 class Login(BaseModel): username: str; password: str
 class ProfileUpdate(BaseModel):
     display_name: str = Field(min_length=1, max_length=100)
@@ -67,6 +80,17 @@ def content_admin(user: User = Depends(current_user)) -> User:
 def password_changed(user: User):
     if user.must_change_password:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Change your temporary password before uploading or publishing")
+def cleanup_new_objects(keys: list[str]) -> None:
+    """Best-effort cleanup for objects that never became database records."""
+    if not keys:
+        return
+    try:
+        delete_many(keys)
+    except Exception:
+        # Do not conceal the original validation/database failure. The object
+        # keys are collision-safe and can be removed manually if storage is
+        # temporarily unavailable.
+        logger.exception("Could not clean up uncommitted storage objects")
 def profile_skills_data(profile: Optional[PublicProfile]):
     import json
     if not profile: return {}, []
@@ -139,16 +163,26 @@ def change_password(body: PasswordUpdate, user: User = Depends(current_user), db
 async def update_avatar(file: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)):
     filename = Path(file.filename or "").name
     suffix = Path(filename).suffix.lower()
-    if suffix not in {".png", ".jpg", ".jpeg", ".webp"}: raise HTTPException(415, "Profile image must be PNG, JPG, or WEBP")
+    if suffix not in AVATAR_CONTENT_TYPES: raise HTTPException(415, "Profile image must be PNG, JPG, or WEBP")
     contents = await file.read()
     if not contents or len(contents) > 5 * 1024 * 1024: raise HTTPException(413, "Profile image must be between 1 byte and 5 MB")
     key = safe_key("profiles", str(user.id), filename)
-    try: upload(key, contents, file.content_type or "image/jpeg")
+    content_type = AVATAR_CONTENT_TYPES[suffix]
+    try: upload(key, contents, content_type)
     except Exception: raise HTTPException(502, "Profile image storage failed")
-    if user.avatar:
-        user.avatar.file_storage_key, user.avatar.content_type = key, file.content_type or "image/jpeg"
-    else: db.add(ProfileAvatar(user_id=user.id, file_storage_key=key, content_type=file.content_type or "image/jpeg"))
-    db.commit(); db.refresh(user); return user_out(user)
+    old_key = user.avatar.file_storage_key if user.avatar else None
+    try:
+        if user.avatar:
+            user.avatar.file_storage_key, user.avatar.content_type = key, content_type
+        else: db.add(ProfileAvatar(user_id=user.id, file_storage_key=key, content_type=content_type))
+        db.commit(); db.refresh(user)
+    except SQLAlchemyError:
+        db.rollback()
+        cleanup_new_objects([key])
+        raise HTTPException(500, "Profile image could not be saved")
+    if old_key and old_key != key:
+        cleanup_new_objects([old_key])
+    return user_out(user)
 @app.get("/api/site-content")
 def site_content(db: Session = Depends(get_db)):
     return site_content_out(db.get(SiteContent, 1))
@@ -194,24 +228,33 @@ async def create_presentation(title: str = Form(..., min_length=1, max_length=20
     except json.JSONDecodeError: raise HTTPException(422, "Invalid folder path data")
     if not files or len(files) > 100: raise HTTPException(422, "Upload between 1 and 100 files")
     if not isinstance(paths, list) or len(paths) != len(files): paths = [Path(f.filename or "").name for f in files]
+    clean_title, clean_version = title.strip(), version.strip()
+    if not clean_title or not clean_version or not authors.strip() or not change_summary.strip():
+        raise HTTPException(422, "Presentation metadata cannot be blank")
+    if db.query(Presentation).filter_by(title=clean_title, version=clean_version).first():
+        raise HTTPException(409, "This title and version already exists; versions are immutable")
     uploaded = []
-    for file, relative_path in zip(files, paths):
-        filename = Path(file.filename or "").name
-        relative_path = str(relative_path).replace("\\", "/").lstrip("/")
-        if not filename or ".." in Path(relative_path).parts or Path(relative_path).name != filename: raise HTTPException(422, "Invalid folder path")
-        suffix = Path(filename).suffix.lower()
-        if suffix not in ALLOWED: raise HTTPException(415, f"Unsupported file type: {filename}")
-        contents = await file.read()
-        if not contents: raise HTTPException(422, f"File is empty: {filename}")
-        if len(contents) > settings.max_upload_mb * 1024 * 1024: raise HTTPException(413, f"File exceeds {settings.max_upload_mb} MB limit: {filename}")
-        key = safe_key(title, version, filename)
-        try: upload(key, contents, file.content_type or "application/octet-stream")
-        except Exception: raise HTTPException(502, "Object storage upload failed; no presentation was created")
-        uploaded.append((filename, relative_path, key, file.content_type or "application/octet-stream", len(contents)))
-    normalized = re.sub(r"[^a-z0-9]+", "-", f"{title}-{version}".lower()).strip("-")
-    if db.query(Presentation).filter_by(title=title.strip(), version=version.strip()).first(): raise HTTPException(409, "This title and version already exists; versions are immutable")
+    try:
+        for file, relative_path in zip(files, paths):
+            filename = Path(file.filename or "").name
+            relative_path = str(relative_path).replace("\\", "/").lstrip("/")
+            if not filename or len(filename) > 255 or len(relative_path) > 500 or ".." in Path(relative_path).parts or Path(relative_path).name != filename: raise HTTPException(422, "Invalid folder path")
+            suffix = Path(filename).suffix.lower()
+            if suffix not in ALLOWED: raise HTTPException(415, f"Unsupported file type: {filename}")
+            contents = await file.read()
+            if not contents: raise HTTPException(422, f"File is empty: {filename}")
+            if len(contents) > settings.max_upload_mb * 1024 * 1024: raise HTTPException(413, f"File exceeds {settings.max_upload_mb} MB limit: {filename}")
+            key = safe_key(clean_title, clean_version, filename)
+            content_type = CONTENT_TYPES[suffix]
+            try: upload(key, contents, content_type)
+            except Exception: raise HTTPException(502, "Object storage upload failed; no presentation was created")
+            uploaded.append((filename, relative_path, key, content_type, len(contents)))
+    except Exception:
+        cleanup_new_objects([item[2] for item in uploaded])
+        raise
+    normalized = re.sub(r"[^a-z0-9]+", "-", f"{clean_title}-{clean_version}".lower()).strip("-")
     filename, _, key, content_type, _ = uploaded[0]
-    p = Presentation(title=title.strip(), version=version.strip(), slug=normalized, presentation_date=presentation_date, authors=authors.strip(), change_summary=change_summary.strip(), file_name=filename, file_storage_key=key, content_type=content_type, created_by_id=user.id)
+    p = Presentation(title=clean_title, version=clean_version, slug=normalized, presentation_date=presentation_date, authors=authors.strip(), change_summary=change_summary.strip(), file_name=filename, file_storage_key=key, content_type=content_type, created_by_id=user.id)
     db.add(p)
     try:
         db.flush()
@@ -219,7 +262,9 @@ async def create_presentation(title: str = Form(..., min_length=1, max_length=20
             db.add(PresentationAsset(presentation_id=p.id, file_name=filename, relative_path=relative_path, file_storage_key=key, content_type=content_type, size_bytes=size))
         db.commit(); db.refresh(p)
     except IntegrityError:
-        db.rollback(); raise HTTPException(409, "A presentation with this permanent URL already exists")
+        db.rollback(); cleanup_new_objects([item[2] for item in uploaded]); raise HTTPException(409, "A presentation with this permanent URL already exists")
+    except SQLAlchemyError:
+        db.rollback(); cleanup_new_objects([item[2] for item in uploaded]); raise HTTPException(500, "Presentation metadata could not be saved")
     return presentation_out(p)
 @app.post("/api/presentations/{presentation_id}/publish")
 def publish(presentation_id: int, user: User = Depends(admin), db: Session = Depends(get_db)):
