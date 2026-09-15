@@ -27,7 +27,6 @@ class Settings(BaseSettings):
     # demonstration.  The shared code remains server-side only.
     public_demo_mode: bool = False
     public_demo_upload_code: str = ""
-    public_demo_upload_username: str = ""
     public_demo_upload_grant_minutes: int = 20
 
 @lru_cache

@@ -184,11 +184,10 @@ Set these values only in the protected backend runtime file, never in Git or a `
 ```dotenv
 PUBLIC_DEMO_MODE=true
 PUBLIC_DEMO_UPLOAD_CODE=<a-long-random-shared-code>
-PUBLIC_DEMO_UPLOAD_USERNAME=<an-existing-ADMIN-or-INSTRUCTOR-username>
 PUBLIC_DEMO_UPLOAD_GRANT_MINUTES=20
 ```
 
-Set `VITE_PUBLIC_DEMO_MODE=true` only for the temporary frontend build. To restore normal behavior, set both mode flags back to `false` and restart/rebuild; the normal login routes and authorization code remain unchanged.
+The code creates only a short-lived, upload-scoped grant; it does not require or reveal an Archer username or password. Set `VITE_PUBLIC_DEMO_MODE=true` only for the temporary frontend build. To restore normal behavior, set both mode flags back to `false` and restart/rebuild; the normal login routes and authorization code remain unchanged.
 
 ## GitHub Pages frontend preparation
 

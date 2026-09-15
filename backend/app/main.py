@@ -2,6 +2,7 @@ from datetime import date
 import logging
 from pathlib import Path
 import re
+import secrets
 from typing import Optional
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +14,7 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .database import Base, engine, get_db
 from .models import Presentation, PresentationAsset, ProfileAvatar, PublicProfile, SiteContent, User
-from .security import bearer, create_demo_upload_grant, create_token, demo_upload_subject, hash_password, token_subject, verify_demo_upload_code, verify_password
+from .security import bearer, create_demo_upload_grant, create_token, hash_password, token_subject, verify_demo_upload_code, verify_demo_upload_grant, verify_password
 from .bootstrap import bootstrap_database
 from .storage import delete_many, download_url, local_file, safe_key, upload
 
@@ -81,13 +82,39 @@ def content_admin(user: User = Depends(current_user)) -> User:
 def password_changed(user: User):
     if user.must_change_password:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Change your temporary password before uploading or publishing")
+
+def public_demo_actor(db: Session) -> User:
+    """Get the non-public actor used only to satisfy presentation ownership."""
+    username = "__public_demo_upload__"
+    actor = db.query(User).filter(User.username == username).first()
+    if actor:
+        return actor
+    actor = User(
+        username=username,
+        display_name="Public demo upload",
+        role="INSTRUCTOR",
+        password_hash=hash_password(secrets.token_urlsafe(32)),
+        must_change_password=False,
+    )
+    try:
+        db.add(actor)
+        db.commit()
+        db.refresh(actor)
+        return actor
+    except IntegrityError:
+        # Concurrent first uploads race only on this internal username.
+        db.rollback()
+        actor = db.query(User).filter(User.username == username).first()
+        if actor:
+            return actor
+        raise
+
 def upload_user(credentials=Depends(bearer), db: Session = Depends(get_db)) -> User:
     """Allow normal admin sessions, or the isolated public-demo upload grant."""
     if settings.public_demo_mode:
         try:
-            user = db.get(User, demo_upload_subject(credentials))
-            if user and user.role in {"ADMIN", "INSTRUCTOR"}:
-                return user
+            verify_demo_upload_grant(credentials)
+            return public_demo_actor(db)
         except HTTPException:
             pass
     return admin(current_user(credentials, db))
@@ -150,18 +177,13 @@ def login(body: Login, db: Session = Depends(get_db)):
     if not user or not verify_password(body.password, user.password_hash): raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid username or password")
     return {"access_token":create_token(user.id),"token_type":"bearer","user":user_out(user)}
 @app.post("/api/public-demo/upload-access")
-def public_demo_upload_access(body: PublicDemoUploadCode, db: Session = Depends(get_db)):
+def public_demo_upload_access(body: PublicDemoUploadCode):
     """Verify the temporary shared code without exposing it to the browser."""
     if not settings.public_demo_mode:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Public demo uploads are disabled")
     if not verify_demo_upload_code(body.code):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "The upload code is not valid")
-    username = settings.public_demo_upload_username.strip()
-    user = db.query(User).filter(func.upper(User.username) == username.upper()).first() if username else None
-    if not user or user.role not in {"ADMIN", "INSTRUCTOR"}:
-        logger.error("Public-demo upload account is not configured correctly")
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Uploads are temporarily unavailable")
-    return {"access_token": create_demo_upload_grant(user.id), "token_type": "bearer", "expires_in_minutes": settings.public_demo_upload_grant_minutes}
+    return {"access_token": create_demo_upload_grant(), "token_type": "bearer", "expires_in_minutes": settings.public_demo_upload_grant_minutes}
 @app.get("/api/auth/me")
 def me(user: User = Depends(current_user)): return user_out(user)
 @app.patch("/api/users/me")
