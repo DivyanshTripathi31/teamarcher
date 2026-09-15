@@ -1,9 +1,10 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=Path(__file__).resolve().parents[1] / ".env", extra="ignore")
     database_url: str = "postgresql+psycopg://archer:archer_local_only@localhost:5432/archer"
     database_auto_create: bool = True
     jwt_secret: str
@@ -23,6 +24,7 @@ class Settings(BaseSettings):
     seed_initial_users: bool = False
     initial_user_passwords_json: str = "{}"
     max_upload_mb: int = 50
+    archer_binary: str = str(Path(__file__).resolve().parents[2] / "archer-starter" / "target" / "debug" / "archer")
 
 @lru_cache
 def get_settings() -> Settings:

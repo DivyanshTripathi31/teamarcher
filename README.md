@@ -94,6 +94,9 @@ The unique `(title, version)` constraint prevents overwriting an old version. Pu
 - `POST /api/presentations/upload`, `POST /api/presentations/{id}/publish`
 - `GET /api/admin/dashboard`
 - `GET /api/site-content`, `PATCH /api/admin/site-content`
+- `POST /api/archer/analyze` accepts a repository folder and returns the JSON Archer analysis report.
+
+The analysis service runs the Rust binary configured by `ARCHER_BINARY`. For local development, build it with `cd archer-starter && cargo build`; production deployments should use `cargo build --release` and set the absolute release-binary path in the backend environment.
 
 ## Deployment on a normal server
 

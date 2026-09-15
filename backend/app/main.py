@@ -1,7 +1,11 @@
 from datetime import date
+import json
 import logging
+import os
 from pathlib import Path
 import re
+import subprocess
+import tempfile
 from typing import Optional
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,6 +39,8 @@ CONTENT_TYPES = {
     ".txt": "text/plain; charset=utf-8",
     ".md": "text/markdown; charset=utf-8",
 }
+ARCHER_ALLOWED = {".rs", ".toml", ".lock", ".md", ".txt", ".json", ".yaml", ".yml"}
+ARCHER_IGNORED_DIRS = {"target", "node_modules", ".venv", "venv", "dist", "build", "__pycache__"}
 AVATAR_CONTENT_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 class Login(BaseModel): username: str; password: str
 class ProfileUpdate(BaseModel):
@@ -80,6 +86,13 @@ def content_admin(user: User = Depends(current_user)) -> User:
 def password_changed(user: User):
     if user.must_change_password:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Change your temporary password before uploading or publishing")
+
+def safe_repository_path(root: Path, relative_path: str) -> Path:
+    normalized = relative_path.replace("\\", "/").lstrip("/")
+    candidate = (root / normalized).resolve()
+    if candidate == root or root not in candidate.parents or ".." in Path(normalized).parts:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid repository path")
+    return candidate
 def cleanup_new_objects(keys: list[str]) -> None:
     """Best-effort cleanup for objects that never became database records."""
     if not keys:
@@ -207,6 +220,63 @@ def team_member(slug: str, db: Session = Depends(get_db)):
     user = next((candidate for candidate in db.query(User).filter_by(role="ADMIN").all() if member_slug(candidate.display_name) == slug), None)
     if not user: raise HTTPException(404, "Team member not found")
     return public_member_out(user, roles)
+
+@app.post("/api/archer/analyze")
+async def analyze_repository(relative_paths: str = Form("[]"), files: list[UploadFile] = File(...), user: User = Depends(admin)):
+    password_changed(user)
+    if not files:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Upload at least one repository file")
+    try:
+        paths = json.loads(relative_paths)
+    except json.JSONDecodeError:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid repository path data")
+    if not isinstance(paths, list) or len(paths) != len(files):
+        paths = [Path(file.filename or "").name for file in files]
+    selected = [(file, path) for file, path in zip(files, paths) if not any(part in ARCHER_IGNORED_DIRS for part in Path(str(path).replace("\\", "/")).parts)]
+    if len(selected) > 500:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Repository contains more than 500 analyzable files; exclude generated files")
+    if not selected:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "No analyzable repository files were selected")
+
+    settings = get_settings()
+    if not Path(settings.archer_binary).is_file() or not os.access(settings.archer_binary, os.X_OK):
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Archer analyzer is not built on the server")
+    with tempfile.TemporaryDirectory(prefix="archer-analysis-") as directory:
+        root = Path(directory).resolve()
+        written = 0
+        for file, relative_path in selected:
+            filename = Path(file.filename or "").name
+            target = safe_repository_path(root, str(relative_path))
+            if not filename or target.name != filename or target.suffix.lower() not in ARCHER_ALLOWED:
+                raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, f"Unsupported repository file: {filename}")
+            contents = await file.read()
+            if not contents or len(contents) > settings.max_upload_mb * 1024 * 1024:
+                raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, f"Invalid file size: {filename}")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(contents)
+            written += len(contents)
+        try:
+            completed = subprocess.run([settings.archer_binary, "--json", str(root)], capture_output=True, text=True, timeout=120, check=False)
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status.HTTP_504_GATEWAY_TIMEOUT, "Archer analysis timed out after 120 seconds")
+        if completed.returncode != 0:
+            logger.error("Archer failed: %s", completed.stderr[-4000:])
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Archer could not analyze this repository")
+        try:
+            report = json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            logger.error("Archer returned invalid JSON: %s", completed.stdout[-4000:])
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Archer returned an invalid report")
+        for route in report.get("routes", []):
+            try:
+                route["file"] = str(Path(route["file"]).resolve().relative_to(root))
+            except (KeyError, ValueError):
+                route["file"] = Path(str(route.get("file", "unknown"))).name
+        report["findings"] = [finding.replace(str(root), "").lstrip("/\\") for finding in report.get("findings", [])]
+        report["parse_errors"] = [error.replace(str(root), "").lstrip("/\\") for error in report.get("parse_errors", [])]
+    report["repository_files"] = len(selected)
+    report["repository_bytes"] = written
+    return report
 
 @app.get("/api/presentations")
 def presentations(db: Session = Depends(get_db)):
