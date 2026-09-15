@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     seed_initial_users: bool = False
     initial_user_passwords_json: str = "{}"
     max_upload_mb: int = 50
+    # A deliberately short-lived, reversible switch for an in-person public
+    # demonstration.  The shared code remains server-side only.
+    public_demo_mode: bool = False
+    public_demo_upload_code: str = ""
+    public_demo_upload_username: str = ""
+    public_demo_upload_grant_minutes: int = 20
 
 @lru_cache
 def get_settings() -> Settings:

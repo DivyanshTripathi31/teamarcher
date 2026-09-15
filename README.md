@@ -175,6 +175,21 @@ python3 /opt/teamarcher/deploy/phase5-production-verification.py
 
 The script securely prompts for an already password-changed ADMIN account and an INSTRUCTOR account. It verifies CORS, login, `/me`, temporary-password status, role boundaries, a real one-file upload/publish/read/delete cycle through RDS and private S3, and persistence across a service restart. It never prints or persists passwords, JWTs, database URLs, or AWS credentials. Its uniquely named temporary archive is deleted automatically, including its S3 object.
 
+### Temporary public demonstration mode
+
+The reversible one-day demo path is disabled by default. When it is deliberately enabled, the public navigation hides the normal **Log in** entry and shows one **Upload** action. That action asks for a server-side shared code before it reveals the existing uploader. A correct code produces only a short-lived, upload-scoped token in browser session storage; the code itself is never sent to, stored in, or built into the frontend.
+
+Set these values only in the protected backend runtime file, never in Git or a `VITE_*` variable:
+
+```dotenv
+PUBLIC_DEMO_MODE=true
+PUBLIC_DEMO_UPLOAD_CODE=<a-long-random-shared-code>
+PUBLIC_DEMO_UPLOAD_USERNAME=<an-existing-ADMIN-or-INSTRUCTOR-username>
+PUBLIC_DEMO_UPLOAD_GRANT_MINUTES=20
+```
+
+Set `VITE_PUBLIC_DEMO_MODE=true` only for the temporary frontend build. To restore normal behavior, set both mode flags back to `false` and restart/rebuild; the normal login routes and authorization code remain unchanged.
+
 ## GitHub Pages frontend preparation
 
 The repository includes `.github/workflows/deploy-frontend-pages.yml`, which builds only `frontend/dist` on pushes to `main` and uploads it through the official GitHub Pages Actions workflow. It does not deploy FastAPI, PostgreSQL, MinIO, S3, or authentication infrastructure.

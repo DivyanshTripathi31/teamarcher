@@ -656,6 +656,15 @@ button:disabled { cursor: not-allowed; opacity: .55; transform: none; }
 .login-panel { display: flex; flex-direction: column; justify-content: center; padding: 56px; }
 .login-panel h2 { margin: 0 0 36px; font-size: clamp(3rem, 5vw, 5rem); letter-spacing: -.085em; line-height: .78; }
 .login-panel form { gap: 22px; }
+.demo-upload-trigger { white-space: nowrap; }
+.demo-upload-overlay { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; background: rgb(23 23 20 / .42); padding: 24px; }
+.demo-upload-dialog { position: relative; width: min(100%, 470px); border: 1px solid var(--ink); border-radius: 20px; background: var(--sheet); padding: 38px; box-shadow: 10px 10px 0 var(--accent); }
+.demo-upload-dialog h2 { margin: 0; font-size: clamp(2.7rem, 7vw, 4.4rem); letter-spacing: -.085em; line-height: .8; }
+.demo-upload-dialog h2 em { color: var(--accent); font-family: 'Instrument Serif', serif; font-weight: 400; }
+.demo-upload-dialog > p:not(.eyebrow) { max-width: 320px; margin: 26px 0; color: var(--muted); line-height: 1.55; }
+.demo-upload-dialog form { gap: 18px; }
+.demo-upload-close { position: absolute; top: 14px; right: 14px; min-width: 32px; min-height: 32px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--ink); padding: 0; font-size: 1.25rem; }
+.demo-upload-close:hover { border-color: var(--accent); background: var(--accent); color: var(--sheet); }
 form { display: grid; gap: 16px; }
 label { display: grid; gap: 8px; color: var(--ink); font: 500 .65rem 'DM Mono', monospace; letter-spacing: .07em; text-transform: uppercase; }
 label small { color: var(--muted); font-size: .58rem; letter-spacing: .04em; text-transform: none; }
