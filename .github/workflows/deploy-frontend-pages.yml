@@ -2,7 +2,7 @@ name: Deploy frontend to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, temporary-public-demo]
   workflow_dispatch:
 
 permissions:
@@ -21,8 +21,8 @@ jobs:
       run:
         working-directory: frontend
     env:
-      # Public build-time configuration; the backend is deployed separately.
-      VITE_API_BASE_URL: https://api.teamarcher.in
+      # Emergency presentation build: static frontend only, with no live API dependency.
+      VITE_STATIC_DEMO: 'true'
       VITE_BASE_PATH: /teamarcher/
     steps:
       - name: Checkout
