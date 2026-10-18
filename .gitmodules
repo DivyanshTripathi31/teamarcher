@@ -1,0 +1,3 @@
+[submodule "archer-starter"]
+	path = archer-starter
+	url = https://github.com/Viditgupta-official/archer.git

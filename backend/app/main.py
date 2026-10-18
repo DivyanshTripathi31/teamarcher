@@ -272,11 +272,36 @@ async def analyze_repository(relative_paths: str = Form("[]"), files: list[Uploa
                 route["file"] = str(Path(route["file"]).resolve().relative_to(root))
             except (KeyError, ValueError):
                 route["file"] = Path(str(route.get("file", "unknown"))).name
+            for evidence in route.get("authorization", []):
+                try:
+                    evidence["file"] = str(Path(evidence["file"]).resolve().relative_to(root))
+                except (KeyError, ValueError):
+                    evidence["file"] = Path(str(evidence.get("file", "unknown"))).name
+        for group in report.get("peer_groups", []):
+            for route in group.get("routes", []):
+                route["file"] = normalize_report_path(route.get("file"), root)
+                for evidence in route.get("authorization", []):
+                    evidence["file"] = normalize_report_path(evidence.get("file"), root)
+        for finding in report.get("finding_details", []):
+            suspicious = finding.get("suspicious_route", {})
+            suspicious["file"] = normalize_report_path(suspicious.get("file"), root)
+            for evidence in finding.get("suspicious_route_evidence", []):
+                evidence["file"] = normalize_report_path(evidence.get("file"), root)
+            for route in finding.get("authorized_peer_routes", []):
+                route["file"] = normalize_report_path(route.get("file"), root)
+                for evidence in route.get("authorization", []):
+                    evidence["file"] = normalize_report_path(evidence.get("file"), root)
         report["findings"] = [finding.replace(str(root), "").lstrip("/\\") for finding in report.get("findings", [])]
         report["parse_errors"] = [error.replace(str(root), "").lstrip("/\\") for error in report.get("parse_errors", [])]
     report["repository_files"] = len(selected)
     report["repository_bytes"] = written
     return report
+
+def normalize_report_path(value: object, root: Path) -> str:
+    try:
+        return str(Path(str(value)).resolve().relative_to(root))
+    except (KeyError, ValueError, TypeError):
+        return Path(str(value or "unknown")).name
 
 @app.get("/api/presentations")
 def presentations(db: Session = Depends(get_db)):
