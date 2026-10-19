@@ -291,8 +291,8 @@ async def analyze_repository(relative_paths: str = Form("[]"), files: list[Uploa
                 route["file"] = normalize_report_path(route.get("file"), root)
                 for evidence in route.get("authorization", []):
                     evidence["file"] = normalize_report_path(evidence.get("file"), root)
-        report["findings"] = [finding.replace(str(root), "").lstrip("/\\") for finding in report.get("findings", [])]
-        report["parse_errors"] = [error.replace(str(root), "").lstrip("/\\") for error in report.get("parse_errors", [])]
+        report["findings"] = [strip_upload_root(finding, root) for finding in report.get("findings", [])]
+        report["parse_errors"] = [strip_upload_root(error, root) for error in report.get("parse_errors", [])]
     report["repository_files"] = len(selected)
     report["repository_bytes"] = written
     return report
@@ -302,6 +302,11 @@ def normalize_report_path(value: object, root: Path) -> str:
         return str(Path(str(value)).resolve().relative_to(root))
     except (KeyError, ValueError, TypeError):
         return Path(str(value or "unknown")).name
+
+def strip_upload_root(text: str, root: Path) -> str:
+    # Engine text embeds paths mid-sentence, so drop the root with its separator
+    # rather than only stripping the start of the whole string.
+    return text.replace(f"{root}{os.sep}", "").replace(str(root), "").lstrip("/\\")
 
 @app.get("/api/presentations")
 def presentations(db: Session = Depends(get_db)):
