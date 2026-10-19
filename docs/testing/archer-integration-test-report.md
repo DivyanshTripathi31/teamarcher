@@ -284,10 +284,22 @@ Command: `/Users/vidit/teamarcher/archer-starter/target/release/archer --json /U
 | Cross-file, qualified, imported, renamed, re-exported, and glob handlers | PASS | Multi-file regression tests resolve evidence to the defining file and line |
 | Ambiguous, unresolved, and duplicate handlers | PASS | Tests confirm no evidence is attached and same-named evidence is never merged |
 | Nested-handler scoping and local-variable shadowing | PASS | Tests cover forward declarations, sibling isolation, shadowing of module-level handlers, statement order, and scope restoration; behavior was checked against `rustc` with offline `actix-web 4.17.0` scratch crates |
-| Authenticated API with current engine | PENDING | Unauthenticated `POST /api/archer/analyze` returned `401 Authentication required` as designed; no session token was available and none was forged |
-| Browser UI with current engine | NOT TESTED | Depends on the authenticated API run |
+| Authenticated API with current engine | PASS | HTTP `200`; all engine report fields match the release CLI after path normalization, except the pre-existing `findings` text-path cosmetic difference below |
+| Browser UI with current engine | NOT TESTED | Not rerun for this engine version |
 
-### Pending authenticated API run
+### Authenticated API run
+
+Run 2026-10-19 17:34 IST against the running local API (`127.0.0.1:8000`, unchanged since before the engine rebuild; not restarted). The backend resolved `archer-starter/target/release/archer` built from engine commit `118d2b7` (`ARCHER_BINARY` not overridden). The session token was obtained by the account owner through `POST /api/auth/login` in their own terminal and passed to curl as a header file; no credential or token was printed or logged, and the header file was deleted after the request. Unauthenticated requests still return `401`.
+
+- Request: the documented multipart upload of `Cargo.toml` and `src/main.rs` with `relative_paths=["Cargo.toml","src/main.rs"]`.
+- Response: HTTP `200` in 0.05 s, 11,081 bytes; top-level fields `files_scanned`, `parse_errors`, `routes`, `peer_groups`, `invariants`, `findings`, `finding_details`, `repository_files`, `repository_bytes`.
+- Summary: `16 routes; 0 parse errors; 3 groups; ['GET /api/admin/payments'] ['/api/admin/orders', '/api/admin/reports', '/api/admin/users']`, matching the expected output.
+- The single finding is `GET /api/admin/payments` (`src/main.rs:87`), supported by the three authorized admin peers with `require_admin` evidence; every route carries the additive `handler_path` and `handler_resolution` fields (`Local` or `Definition`).
+- Upload metadata: `repository_files: 2`, `repository_bytes: 4193`.
+- Comparison with the release CLI (`archer --json` on the fixture, with CLI paths made relative to the fixture root): every structured field (`files_scanned`, `parse_errors`, `routes`, `peer_groups`, `invariants`, `finding_details`, including evidence, lines, handlers, and resolution kinds) is identical, and structured paths are normalized to `src/main.rs`.
+- One difference: in the human-readable `findings` text, the API shows `/src/main.rs:87` (leading slash) where the CLI shows the fixture path. `backend/app/main.py` removes the temporary upload root from each `findings` string and then strips only the string's leading slash, so embedded paths keep `/`. This line predates the engine changes (`d771276`). It does not affect structured fields, and the response contained no temporary-root or host filesystem path.
+
+The procedure below can be reused to rerun the check.
 
 The analysis route requires a bearer token for an `ADMIN` or `INSTRUCTOR` account whose forced password change is complete. A token comes from `POST /api/auth/login` (`{"username": ..., "password": ...}` → `access_token`, valid for `JWT_EXPIRE_MINUTES`, default 480) or, in a signed-in browser session, from `localStorage.getItem('token')` on the application origin. With the local API on `127.0.0.1:8000`, the backend resolves the release binary above because `ARCHER_BINARY` is not overridden.
 
@@ -309,4 +321,4 @@ Expected output, matching the direct release CLI: `16 routes; 0 parse errors; 3 
 
 ### Assessment
 
-The current engine reproduces the fixture's expected routes, groups, invariants, and single admin drift finding through the release CLI, with no change to thresholds, fixture files, or expected outcomes. The authenticated API and browser checks for this engine version remain pending. This fixture is a synthetic single-file repository; passing it does not establish accuracy or generalization on real-world Actix-Web applications.
+The current engine reproduces the fixture's expected routes, groups, invariants, and single admin drift finding through the release CLI and the authenticated `POST /api/archer/analyze` endpoint, with no change to thresholds, fixture files, or expected outcomes. The browser check for this engine version was not rerun. This fixture is a synthetic single-file repository; passing it does not establish accuracy or generalization on real-world Actix-Web applications.
