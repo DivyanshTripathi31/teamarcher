@@ -16,14 +16,14 @@
 - Cross-file handler resolution: every free function is indexed by crate and module path, and each route's handler is resolved through local definitions, explicit/renamed/re-exported imports, unambiguous globs, and module-qualified paths (`handlers::x`, `crate::`, `self::`, `super::`)
 - Each route reports additive `handler_path` and `handler_resolution` JSON fields; `Ambiguous` and `Unresolved` handlers carry no evidence, and evidence from same-named functions is never merged
 - Nested handler functions resolve within their own lexical block, local bindings (`let`, parameters, closure/loop/match/`if let` patterns, block `const`/`static`) shadow handler names in statement order, and functions declared inside a handler body no longer lend it their evidence
-- Controlled integration fixture passes through the current release engine CLI for all 16 routes, three peer groups/invariants, and the expected admin drift finding; the previous engine version also passed through the real API and browser UI
+- Controlled integration fixture passes through the current release engine CLI and the authenticated `POST /api/archer/analyze` endpoint (HTTP `200`) for all 16 routes, zero parse errors, three peer groups/invariants, and the single expected `GET /api/admin/payments` finding supported by the users, orders, and reports admin routes; structured API report fields match the CLI (see `docs/testing/archer-integration-test-report.md`, section K). The previous engine version also passed through the browser UI
 - Frontend clears old reports at scan start and distinguishes zero routes from failed analysis
 - Backend binary selection now prefers the release binary and falls back to debug
 
 ## Implemented but not fully verified
 
 - End-to-end application stack using PostgreSQL and MinIO
-- Authenticated `POST /api/archer/analyze` with the current engine binary: pending; the unauthenticated request returns `401 Authentication required` as designed
+- Browser UI with the current engine binary: not rerun since the handler-resolution changes
 - Deployment and EC2 startup scripts under `deploy/`
 - Benchmark artifact validation against actual fixture data
 
@@ -46,4 +46,4 @@
 
 ## Current judgment
 
-The current engine passes its expected 16-route integration fixture scenario and admin drift finding through the release CLI; the authenticated API run with this engine is pending. The fixture is synthetic and single-file, so it does not establish real-world accuracy or generalization. Production deployment and broader evidence-recognition behavior remain unverified; lack of recognized evidence must not be reported as proof of missing authorization.
+The current engine passes its expected 16-route integration fixture scenario and admin drift finding through the release CLI and the authenticated analysis API. This is synthetic-fixture validation of a single-file repository, not evidence of real-world accuracy or generalization. Production deployment and broader evidence-recognition behavior remain unverified; lack of recognized evidence must not be reported as proof of missing authorization.

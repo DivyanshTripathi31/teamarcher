@@ -2,6 +2,15 @@
 
 ## Date: 2026-10-19
 
+### Authenticated API integration with the current engine
+
+- Ran the documented section K procedure against the running local API (not restarted), which resolved the release binary built from engine commit `118d2b7`. The account owner obtained the session token through the normal `POST /api/auth/login` flow; no credential or token was printed or logged, and the temporary header file was deleted after use.
+- `POST /api/archer/analyze` with `Cargo.toml` and `src/main.rs` returned HTTP `200`: 16 routes, 0 parse errors, 3 peer groups, and exactly one potential finding, `GET /api/admin/payments`, supported by `/api/admin/users`, `/api/admin/orders`, and `/api/admin/reports` (`require_admin`).
+- All structured report fields matched the release CLI after path normalization. The one difference was a pre-existing leading slash on embedded paths in the human-readable `findings` text (`/src/main.rs:87`); no temporary-root or host path was exposed.
+- This is synthetic-fixture validation of a single-file repository, not evidence of real-world accuracy or generalization. The browser UI was not rerun for this engine version.
+
+## Date: 2026-10-19
+
 ### Cross-file handler resolution and lexical scoping
 
 - Evidence classification: `access` now counts as a permission subject only as the final word of a check helper, so `verify_access_token` and `check_access_log` produce no authorization evidence while `check_access`, `verify_resource_access`, and `check_permission` remain `PermissionCheck`/`Strong`.
