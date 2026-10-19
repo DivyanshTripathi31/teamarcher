@@ -2,6 +2,22 @@
 
 ## Date: 2026-10-19
 
+### Cross-file handler resolution and lexical scoping
+
+- Evidence classification: `access` now counts as a permission subject only as the final word of a check helper, so `verify_access_token` and `check_access_log` produce no authorization evidence while `check_access`, `verify_resource_access`, and `check_permission` remain `PermissionCheck`/`Strong`.
+- Cross-file resolution: the engine now parses every file, indexes all free functions (including ones without evidence) by crate and Cargo module path, then resolves each `.to(...)` handler through local definitions, explicit/renamed/grouped/`self` imports and re-exports, unambiguous globs, and qualified paths. Previously evidence was looked up by bare name within the registering file only, so handlers in other files contributed nothing and same-named functions could overwrite each other.
+- Each route now reports additive `handler_path` and `handler_resolution` fields (`Definition`, `Local`, `Imported`, `GlobImported`, `Qualified`, `UniqueName`, `Ambiguous` with candidates, `Unresolved`). Ambiguous and unresolved handlers carry no evidence. The `UniqueName` fallback applies only when path rules find nothing and exactly one compatible definition exists in the crate. `handler` now holds the last segment of qualified paths instead of `null`.
+- Nested functions declared in a block resolve only within that block (including before their declaration); siblings never share them, duplicates are `Unresolved`, and function-local modules do not see enclosing block items. This fixed a case where a nested unprotected `health` borrowed a protected module-level `health`'s evidence.
+- Local bindings now shadow handler names in lexical and statement order: `let` (after its statement), function/closure parameters, `for`/`match`/`if let`/`while let` patterns, and block `const`/`static`. A shadowed name is `Unresolved` and never reaches the index or the `UniqueName` fallback. Before this, eight compiled shadowing forms attached a protected module-level handler's evidence to unprotected routes.
+- Functions, `impl` methods, and `trait` methods declared inside a handler body no longer lend it their evidence. A handler that calls such a helper with an unrecognized name now has no recognized evidence, because calls are not followed.
+- Shadowing and nested-handler behavior was checked against Rust's actual rules with offline `actix-web 4.17.0` scratch crates (compile-error oracles for statement order, inner-item precedence, closures, parameters, and block constants).
+- Validation: `cargo test --offline --locked` 35 passed; `cargo check --offline --locked` and `cargo build --release --locked` succeeded. The three dead-code warnings and nine `cargo fmt --check` hunks are identical in the committed baseline and were not reformatted. Each new safeguard was mutation-checked in a scratch copy.
+- Release CLI scan of `archer-integration-test-repo`: 16 routes, 0 parse errors, 3 peer groups/invariants, 1 potential finding for `GET /api/admin/payments` supported by `/api/admin/users`, `/api/admin/orders`, and `/api/admin/reports` (`require_admin`). The JSON matches the previous engine apart from the two additive fields.
+- Not verified: the authenticated `POST /api/archer/analyze` run with this binary is pending a valid admin/instructor session; an unauthenticated request returned `401 Authentication required`. Backend and frontend code were not changed and their suites were not rerun.
+- Remaining limitations: `use` inside function bodies, macro-generated bindings, `#[path]` modules, `impl`-method handlers, cross-crate workspace dependencies, and scope-level `.wrap(...)` after routes are not modeled. The fixture is synthetic and single-file; it does not establish real-world accuracy or generalization.
+
+## Date: 2026-10-19
+
 ### Adapt branch authorization-call idea
 
 - Reviewed engine commit `05561a31d8fc34ff4d936bc27bcec5b80837aa29`. Adapted its free-function call-name recognition and negative-test intent into the current typed `AuthEvidence` model instead of importing its string-only report schema.

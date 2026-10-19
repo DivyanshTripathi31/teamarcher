@@ -2,7 +2,7 @@
 
 **Run date:** 2026-10-19
 **Fixture:** `/Users/vidit/Desktop/archer-integration-test-repo`
-**Current assessment:** The fixture's engine → API → UI flow passes after route extraction, UI state, and branch-inspired free-function evidence recognition fixes. The engine extracts all 16 routes, produces finance, manager, and admin peer groups/invariants, and reports the expected `/api/admin/payments` potential drift; the UI matches the API. Historical checkpoints below retain the earlier post-route-fix counts. Evidence inference remains heuristic, and identity extraction is not authorization.
+**Current assessment:** The fixture's engine → API → UI flow passed after route extraction, UI state, and branch-inspired free-function evidence recognition fixes. After the cross-file handler-resolution and lexical-scoping changes (section K), the current release CLI still extracts all 16 routes, produces finance, manager, and admin peer groups/invariants, and reports the expected `/api/admin/payments` potential drift; the authenticated API/UI rerun with this engine is pending. Historical checkpoints below retain earlier counts. Evidence inference remains heuristic, and identity extraction is not authorization.
 
 Potential drift is a review signal, not proof of exploitability.
 
@@ -256,3 +256,57 @@ Commit reviewed: `05561a31d8fc34ff4d936bc27bcec5b80837aa29` on `origin/feature/a
 - Rust suite: 19 passed; release build succeeded. Backend suite: 10 passed (44 existing deprecation warnings). Frontend build succeeded.
 - Live fixture API/UI scan: HTTP 200; 16 routes, 3 peer groups, 3 invariants, 1 finding, no parse errors. Browser showed 16 route rows, the corresponding summary counts, and three supporting admin routes.
 - Remaining limitation: helper names are lexical heuristics, not proof of implementation semantics. Unrecognized names remain “no recognized evidence,” not confirmed absence of authorization.
+
+## K. Cross-file handler resolution and lexical-scoping verification
+
+Engine changes on top of engine commit `8e85c3f`: access-helper classification, cross-file handler resolution, nested-handler block scoping, nested-function evidence isolation, and local-variable shadowing. Backend and frontend code were not changed.
+
+### Direct release engine
+
+Command: `/Users/vidit/teamarcher/archer-starter/target/release/archer --json /Users/vidit/Desktop/archer-integration-test-repo` after `cargo build --release --locked`.
+
+- Exit status: `0`.
+- `files_scanned=1`, `parse_errors=[]`, `routes=16`, `peer_groups=3`, `invariants=3`, `findings=1`, `finding_details=1`.
+- Handler resolution: 13 `Local` (ordinary registrations in `src/main.rs`) and 3 `Definition` (attribute routes).
+- Peer groups: `/api/finance` GET (2/2 authorized, `verify_finance_permission`), `/api/manager` GET (2/2, `require_manager`), `/api/admin` GET (3/4, `require_admin`, strong).
+- Finding: `GET /api/admin/payments` (`src/main.rs:87`) with no recognized evidence, supported by `GET /api/admin/users` (line 10), `GET /api/admin/orders` (line 14), and `GET /api/admin/reports` (line 18), each `RoleCheck` `require_admin`.
+- `expected.json`: the primary drift candidate and its three expected peers match; no intentional public route was reported.
+- The JSON report equals the committed-baseline engine's report apart from the two additive per-route fields `handler_path` and `handler_resolution`. The text CLI output is unchanged.
+
+### Engine test and build results
+
+| Check | Status | Evidence |
+|---|---|---|
+| Rust tests | PASS | `cargo test --offline --locked`: 35 passed, 0 failed |
+| `cargo check` | PASS | `cargo check --offline --locked` succeeded; three dead-code warnings identical to the committed baseline |
+| Rust release build | PASS | `cargo build --release --locked` succeeded |
+| Formatting | PRE-EXISTING FAILURE | `cargo fmt --check` reports nine hunks; the same nine are present in committed engine commit `8e85c3f`; none were introduced and unrelated code was not reformatted |
+| Cross-file, qualified, imported, renamed, re-exported, and glob handlers | PASS | Multi-file regression tests resolve evidence to the defining file and line |
+| Ambiguous, unresolved, and duplicate handlers | PASS | Tests confirm no evidence is attached and same-named evidence is never merged |
+| Nested-handler scoping and local-variable shadowing | PASS | Tests cover forward declarations, sibling isolation, shadowing of module-level handlers, statement order, and scope restoration; behavior was checked against `rustc` with offline `actix-web 4.17.0` scratch crates |
+| Authenticated API with current engine | PENDING | Unauthenticated `POST /api/archer/analyze` returned `401 Authentication required` as designed; no session token was available and none was forged |
+| Browser UI with current engine | NOT TESTED | Depends on the authenticated API run |
+
+### Pending authenticated API run
+
+The analysis route requires a bearer token for an `ADMIN` or `INSTRUCTOR` account whose forced password change is complete. A token comes from `POST /api/auth/login` (`{"username": ..., "password": ...}` → `access_token`, valid for `JWT_EXPIRE_MINUTES`, default 480) or, in a signed-in browser session, from `localStorage.getItem('token')` on the application origin. With the local API on `127.0.0.1:8000`, the backend resolves the release binary above because `ARCHER_BINARY` is not overridden.
+
+```bash
+ARCHER_TOKEN=$(python3 -c '
+import getpass, json, urllib.request
+tty = open("/dev/tty", "r+"); tty.write("Username: "); tty.flush(); username = tty.readline().strip()
+password = getpass.getpass("Password: ")
+request = urllib.request.Request("http://127.0.0.1:8000/api/auth/login", json.dumps({"username": username, "password": password}).encode(), {"Content-Type": "application/json"})
+print(json.load(urllib.request.urlopen(request))["access_token"])')
+
+cd /Users/vidit/Desktop/archer-integration-test-repo
+curl -sS -X POST http://127.0.0.1:8000/api/archer/analyze -H "Authorization: Bearer $ARCHER_TOKEN" \
+  -F 'relative_paths=["Cargo.toml","src/main.rs"]' -F files=@Cargo.toml -F files=@src/main.rs \
+  | python3 -c 'import json, sys; r = json.load(sys.stdin); f = r["finding_details"]; print(len(r["routes"]), "routes;", len(r["parse_errors"]), "parse errors;", len(r["peer_groups"]), "groups;", [x["suspicious_route"]["method"] + " " + x["suspicious_route"]["path"] for x in f], sorted(p["path"] for x in f for p in x["authorized_peer_routes"]))'
+```
+
+Expected output, matching the direct release CLI: `16 routes; 0 parse errors; 3 groups; ['GET /api/admin/payments'] ['/api/admin/orders', '/api/admin/reports', '/api/admin/users']`.
+
+### Assessment
+
+The current engine reproduces the fixture's expected routes, groups, invariants, and single admin drift finding through the release CLI, with no change to thresholds, fixture files, or expected outcomes. The authenticated API and browser checks for this engine version remain pending. This fixture is a synthetic single-file repository; passing it does not establish accuracy or generalization on real-world Actix-Web applications.

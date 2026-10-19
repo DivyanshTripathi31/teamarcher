@@ -4,21 +4,26 @@
 
 - Canonical Rust analyzer implemented in `archer-starter/src/analyzer.rs`
 - CLI JSON-emitting interface implemented in `archer-starter/src/main.rs`
-- Rust test suite passes in the current environment (`19 passed, 0 failed`)
-- Release build succeeds for the engine
+- Rust test suite passes in the current environment (`35 passed, 0 failed`)
+- Release build succeeds for the engine (`cargo build --release --locked`); three dead-code warnings and nine `cargo fmt --check` hunks are pre-existing in the committed baseline
 - Backend health endpoint responds successfully
 - Backend tests pass for the current project scope (`10 passed, 0 failed` for the verified backend subset)
 - Frontend production build succeeds
 - Analyzer report UI renders structured Rust findings, peer groups, invariants, route evidence, and the six report summary counts
 - Sibling Actix-Web `.service(...)` registrations are traversed with scope context restored between siblings
 - Authorization-style free-function calls produce typed role, permission, or ownership evidence; authentication-only calls remain weak identity evidence
-- Controlled integration fixture passes through the release engine, real API, and browser UI for all 16 routes, three peer groups/invariants, and the expected admin drift finding
+- Token-validation and access-log helpers such as `verify_access_token` and `check_access_log` are not promoted to permission checks; `access` counts only as the final word of a check helper (`check_access`, `verify_resource_access`)
+- Cross-file handler resolution: every free function is indexed by crate and module path, and each route's handler is resolved through local definitions, explicit/renamed/re-exported imports, unambiguous globs, and module-qualified paths (`handlers::x`, `crate::`, `self::`, `super::`)
+- Each route reports additive `handler_path` and `handler_resolution` JSON fields; `Ambiguous` and `Unresolved` handlers carry no evidence, and evidence from same-named functions is never merged
+- Nested handler functions resolve within their own lexical block, local bindings (`let`, parameters, closure/loop/match/`if let` patterns, block `const`/`static`) shadow handler names in statement order, and functions declared inside a handler body no longer lend it their evidence
+- Controlled integration fixture passes through the current release engine CLI for all 16 routes, three peer groups/invariants, and the expected admin drift finding; the previous engine version also passed through the real API and browser UI
 - Frontend clears old reports at scan start and distinguishes zero routes from failed analysis
 - Backend binary selection now prefers the release binary and falls back to debug
 
 ## Implemented but not fully verified
 
 - End-to-end application stack using PostgreSQL and MinIO
+- Authenticated `POST /api/archer/analyze` with the current engine binary: pending; the unauthenticated request returns `401 Authentication required` as designed
 - Deployment and EC2 startup scripts under `deploy/`
 - Benchmark artifact validation against actual fixture data
 
@@ -37,7 +42,8 @@
 
 - Benchmark fixture set not present in the current checkout
 - Authorization helper recognition remains a name-based heuristic; arbitrary project-specific helper semantics still require review and must not be inferred from missing evidence
+- Handler resolution does not model `use` inside function bodies, macro-generated bindings, `#[path]` modules, `impl`-method handlers, or cross-crate workspace dependencies; calls into helper bodies are not followed
 
 ## Current judgment
 
-The controlled engine → API → UI integration fixture passes its expected 16-route scenario and admin drift finding. Production deployment and broader evidence-recognition behavior remain unverified; lack of recognized evidence must not be reported as proof of missing authorization.
+The current engine passes its expected 16-route integration fixture scenario and admin drift finding through the release CLI; the authenticated API run with this engine is pending. The fixture is synthetic and single-file, so it does not establish real-world accuracy or generalization. Production deployment and broader evidence-recognition behavior remain unverified; lack of recognized evidence must not be reported as proof of missing authorization.
