@@ -2,6 +2,16 @@
 
 ## Date: 2026-10-19
 
+### Adapt branch authorization-call idea
+
+- Reviewed engine commit `05561a31d8fc34ff4d936bc27bcec5b80837aa29`. Adapted its free-function call-name recognition and negative-test intent into the current typed `AuthEvidence` model instead of importing its string-only report schema.
+- Free-function calls now recognize role helpers (`require_manager`), permission helpers (`check_permission`, `verify_finance_permission`), ownership helpers (`check_resource_owner`), and explicit authorization checks. `require_authenticated_user` remains `IdentityExtraction` with weak strength and does not satisfy `Route::is_authorized()`.
+- Added regression coverage for these evidence kinds and for benign admin-looking names plus error-only/error-match handlers; thresholds and peer logic are unchanged.
+- Rebuilt fixture result through direct CLI and live API/UI: 16 routes, 3 peer groups/invariants (finance, manager, admin), 1 potential finding for `GET /api/admin/payments`; browser counts and supporting admin peers matched the API.
+- Validation: Rust tests 19 passed; locked release build, backend tests (10 passed, 44 existing deprecation warnings), and frontend production build passed.
+
+## Date: 2026-10-19
+
 ### Integration defect fixes
 
 - Updated the Rust route visitor to traverse sibling `.service(...)` receiver chains after restoring the prior scope context; added a regression test for 16 total routes (13 scoped and three attribute routes) across five nested scope families, evidence association, and the admin finding.

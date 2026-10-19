@@ -2,7 +2,7 @@
 
 **Run date:** 2026-10-19
 **Fixture:** `/Users/vidit/Desktop/archer-integration-test-repo`
-**Current assessment:** The three requested defects are fixed and the fixture's primary engine → API → UI scenario now passes. The engine extracts all 16 route declarations, produces the expected `/api/admin` peer group and potential drift finding, and the UI matches the real API report. The pre-fix baseline and post-fix verification are both retained below. Some non-admin helper-call styles still produce no recognized authorization evidence; they are not silently treated as protected.
+**Current assessment:** The fixture's engine → API → UI flow passes after route extraction, UI state, and branch-inspired free-function evidence recognition fixes. The engine extracts all 16 routes, produces finance, manager, and admin peer groups/invariants, and reports the expected `/api/admin/payments` potential drift; the UI matches the API. Historical checkpoints below retain the earlier post-route-fix counts. Evidence inference remains heuristic, and identity extraction is not authorization.
 
 Potential drift is a review signal, not proof of exploitability.
 
@@ -188,7 +188,7 @@ The real UI was opened at `http://127.0.0.1:5173/use` with the existing authenti
 
 No fixture files, expected outcomes, engine thresholds, detector logic, or benchmark ground truth were changed. The diagnostic recommends a focused route-visitor regression fix and two small frontend state/copy fixes; no application code fix was applied here.
 
-## H. Post-fix verification
+## H. Post-route/state-fix verification (before evidence follow-up)
 
 ### Changes verified
 
@@ -240,6 +240,19 @@ Command: `/Users/vidit/teamarcher/archer-starter/target/release/archer --json /U
 
 The remaining evidence-recognition limitation is not evidence that those fixture routes are protected or unprotected; it means the engine did not recognize those helper forms. No authorization helper heuristic or peer threshold was changed in this fix.
 
-## I. Current overall assessment
+## I. Overall assessment after route/state fixes
 
-The three requested defects are fixed. The controlled fixture now passes its expected route extraction and primary admin drift scenario through the real release engine, FastAPI endpoint, and React interface. This does not prove exploitability, nor does it establish behavior for unsupported authorization helper forms. No fixture, expected output, benchmark ground truth, or detection threshold was changed. No commit or push was made.
+The route traversal and frontend state/empty-state fixes passed through the real release engine, FastAPI endpoint, and React interface. That checkpoint still had limited free-function evidence recognition. No fixture, expected output, benchmark ground truth, or detection threshold was changed.
+
+## J. Branch-inspired call-evidence follow-up
+
+Commit reviewed: `05561a31d8fc34ff4d936bc27bcec5b80837aa29` on `origin/feature/archer-improvements`. Its free-function authorization-name recognition and negative tests were adapted into the published engine's typed evidence model; its string-valued report schema was not copied.
+
+- Free-function `check_permission` and `verify_finance_permission` calls now emit `PermissionCheck`/`Strong` evidence.
+- `require_manager` emits `RoleCheck`/`Strong`; `check_resource_owner` emits `OwnershipCheck`/`Medium`.
+- `require_authenticated_user` emits `IdentityExtraction`/`Weak` and is not considered authorization by `Route::is_authorized()`.
+- Names such as `admin_dashboard_title` and error-only/error-match code produce no authorization evidence.
+- No thresholds or peer-group rules changed.
+- Rust suite: 19 passed; release build succeeded. Backend suite: 10 passed (44 existing deprecation warnings). Frontend build succeeded.
+- Live fixture API/UI scan: HTTP 200; 16 routes, 3 peer groups, 3 invariants, 1 finding, no parse errors. Browser showed 16 route rows, the corresponding summary counts, and three supporting admin routes.
+- Remaining limitation: helper names are lexical heuristics, not proof of implementation semantics. Unrecognized names remain “no recognized evidence,” not confirmed absence of authorization.
