@@ -259,7 +259,7 @@ Commit reviewed: `05561a31d8fc34ff4d936bc27bcec5b80837aa29` on `origin/feature/a
 
 ## K. Cross-file handler resolution and lexical-scoping verification
 
-Engine changes on top of engine commit `8e85c3f`: access-helper classification, cross-file handler resolution, nested-handler block scoping, nested-function evidence isolation, and local-variable shadowing. Backend and frontend code were not changed.
+Engine changes on top of engine commit `8e85c3f`: access-helper classification, cross-file handler resolution, nested-handler block scoping, nested-function evidence isolation, and local-variable shadowing. Frontend code was not changed. The only backend change is parent commit `80799c8`, which fixes path formatting in the human-readable `findings` text (see the rerun below).
 
 ### Direct release engine
 
@@ -284,7 +284,7 @@ Command: `/Users/vidit/teamarcher/archer-starter/target/release/archer --json /U
 | Cross-file, qualified, imported, renamed, re-exported, and glob handlers | PASS | Multi-file regression tests resolve evidence to the defining file and line |
 | Ambiguous, unresolved, and duplicate handlers | PASS | Tests confirm no evidence is attached and same-named evidence is never merged |
 | Nested-handler scoping and local-variable shadowing | PASS | Tests cover forward declarations, sibling isolation, shadowing of module-level handlers, statement order, and scope restoration; behavior was checked against `rustc` with offline `actix-web 4.17.0` scratch crates |
-| Authenticated API with current engine | PASS | HTTP `200`; all engine report fields match the release CLI after path normalization, except the pre-existing `findings` text-path cosmetic difference below |
+| Authenticated API with current engine | PASS | HTTP `200` on `127.0.0.1:8000`, and again on a temporary `127.0.0.1:8001` server running the path fix; on `8001` the API report matches the release CLI after normalizing repository-relative paths, including `findings` text |
 | Browser UI with current engine | NOT TESTED | Not rerun for this engine version |
 
 ### Authenticated API run
@@ -297,7 +297,18 @@ Run 2026-10-19 17:34 IST against the running local API (`127.0.0.1:8000`, unchan
 - The single finding is `GET /api/admin/payments` (`src/main.rs:87`), supported by the three authorized admin peers with `require_admin` evidence; every route carries the additive `handler_path` and `handler_resolution` fields (`Local` or `Definition`).
 - Upload metadata: `repository_files: 2`, `repository_bytes: 4193`.
 - Comparison with the release CLI (`archer --json` on the fixture, with CLI paths made relative to the fixture root): every structured field (`files_scanned`, `parse_errors`, `routes`, `peer_groups`, `invariants`, `finding_details`, including evidence, lines, handlers, and resolution kinds) is identical, and structured paths are normalized to `src/main.rs`.
-- One difference: in the human-readable `findings` text, the API shows `/src/main.rs:87` (leading slash) where the CLI shows the fixture path. `backend/app/main.py` removes the temporary upload root from each `findings` string and then strips only the string's leading slash, so embedded paths keep `/`. This line predates the engine changes (`d771276`). It does not affect structured fields, and the response contained no temporary-root or host filesystem path.
+- One difference in this run: in the human-readable `findings` text, the API showed `/src/main.rs:87` (leading slash) where the CLI shows the fixture path. The backend removed the temporary upload root from each `findings` string and then stripped only the string's leading slash, so embedded paths kept `/`. That code predated the engine changes (`d771276`), did not affect structured fields, and exposed no temporary-root or host filesystem path. It is fixed in parent commit `80799c8` and verified in the rerun below.
+
+### Authenticated API rerun with the path fix
+
+Run 2026-10-19 17:43 IST against a temporary API on `127.0.0.1:8001`, started from the committed backend at parent commit `80799c8` with the same launch arguments as the port `8000` server, after the fix was written. It resolved the same release binary (engine commit `118d2b7`) and returned `401` to unauthenticated requests. The account owner again obtained the token through `POST /api/auth/login` in their own terminal; it was passed to curl as a header file, never printed or logged, and the file was deleted after the request.
+
+- Request: the same multipart upload of `Cargo.toml` and `src/main.rs`.
+- Response: HTTP `200` in 0.03 s, 11,077 bytes (four bytes smaller than the earlier run: the four removed leading slashes).
+- Summary: `16 routes; 0 parse errors; 3 groups; ['GET /api/admin/payments'] ['/api/admin/orders', '/api/admin/reports', '/api/admin/users']`. The single finding is `GET /api/admin/payments`, supported by the three authorized admin peers `/api/admin/users`, `/api/admin/orders`, and `/api/admin/reports`.
+- The `findings` text now renders `Suspicious route: GET /api/admin/payments (src/main.rs:87)`, and no embedded path has a leading slash.
+- Comparison with the release CLI after normalizing repository-relative paths: every engine field, including the `findings` text, is identical. Compared with the earlier `8000` run, only the `findings` text changed. The response contained no temporary-root or host filesystem path.
+- The temporary server was stopped after the test. The original server on `127.0.0.1:8000` was not restarted or modified; it still serves its older backend code, so it still renders the leading slash until it is restarted.
 
 The procedure below can be reused to rerun the check.
 
@@ -321,4 +332,4 @@ Expected output, matching the direct release CLI: `16 routes; 0 parse errors; 3 
 
 ### Assessment
 
-The current engine reproduces the fixture's expected routes, groups, invariants, and single admin drift finding through the release CLI and the authenticated `POST /api/archer/analyze` endpoint, with no change to thresholds, fixture files, or expected outcomes. The browser check for this engine version was not rerun. This fixture is a synthetic single-file repository; passing it does not establish accuracy or generalization on real-world Actix-Web applications.
+The current engine reproduces the fixture's expected routes, groups, invariants, and single admin drift finding through the release CLI and the authenticated `POST /api/archer/analyze` endpoint, with no change to thresholds, fixture files, or expected outcomes. With the backend path fix, the API report matches the release CLI after normalizing repository-relative paths; the long-running `8000` server does not yet serve that fix. The browser check for this engine version was not rerun. This fixture is a synthetic single-file repository; passing it does not establish accuracy or generalization on real-world Actix-Web applications.
