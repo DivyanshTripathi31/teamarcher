@@ -1,0 +1,77 @@
+name: Build ARCHER analyzer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - archer-starter
+      - .gitmodules
+      - .github/workflows/build-archer-analyzer.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # GitHub-hosted ubuntu-24.04 runners are x86_64. This matches the EC2 host.
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out parent repository and pinned analyzer submodule
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install the documented Rust toolchain
+        uses: dtolnay/rust-toolchain@1.98.1
+
+      - name: Record build identity
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "parent_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "analyzer_commit=$(git -C archer-starter rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "target=$(rustc -vV | sed -n 's/^host: //p')" >> "$GITHUB_OUTPUT"
+
+      - name: Test canonical analyzer
+        working-directory: archer-starter
+        run: cargo test --locked
+
+      - name: Build release analyzer
+        working-directory: archer-starter
+        run: cargo build --release --locked
+
+      - name: Package executable, build identity, and checksum
+        shell: bash
+        env:
+          PARENT_COMMIT: ${{ steps.identity.outputs.parent_commit }}
+          ANALYZER_COMMIT: ${{ steps.identity.outputs.analyzer_commit }}
+          RUST_TARGET: ${{ steps.identity.outputs.target }}
+        run: |
+          set -euo pipefail
+          test "$RUST_TARGET" = "x86_64-unknown-linux-gnu"
+          package_dir="artifact/archer-linux-x86_64"
+          mkdir -p "$package_dir"
+          install -m 0755 archer-starter/target/release/archer "$package_dir/archer"
+          {
+            echo "parent_commit=$PARENT_COMMIT"
+            echo "analyzer_commit=$ANALYZER_COMMIT"
+            echo "rust_target=$RUST_TARGET"
+            rustc --version
+            cargo --version
+          } > "$package_dir/BUILD_INFO"
+          (
+            cd "$package_dir"
+            sha256sum archer > SHA256SUMS
+          )
+          tar -C artifact -czf artifact/archer-linux-x86_64.tar.gz archer-linux-x86_64
+
+      - name: Upload Ubuntu 24.04 x86_64 release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: archer-linux-x86_64-${{ github.sha }}
+          path: artifact/archer-linux-x86_64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
