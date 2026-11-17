@@ -741,17 +741,44 @@ button:disabled { cursor: not-allowed; opacity: .55; transform: none; }
 .pdf-presentation-message button { justify-self: center; margin-top: 5px; }
 
 /* Login, admin, and forms */
-.login-page { min-height: 620px; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(400px, .9fr); overflow: hidden; border: 1px solid var(--ink); border-radius: 24px; background: var(--sheet); }
-.login-copy { position: relative; display: flex; flex-direction: column; overflow: hidden; background: var(--night); color: var(--sheet); padding: 60px; }
-.login-copy::before { position: absolute; top: -70px; right: -70px; width: 340px; aspect-ratio: 1; border: 1px solid #7b776c; border-radius: 48% 52% 5% 52%; content: ''; transform: rotate(32deg); }
-.login-copy .eyebrow, .login-copy > span { position: relative; color: #ccc6b8; }
-.login-copy h1 { position: relative; max-width: 750px; margin: 0; font-size: clamp(4.5rem, 8vw, 8.4rem); letter-spacing: -.1em; line-height: .75; }
-.login-copy h1 em, .login-panel h2 em { color: var(--accent); font-family: 'Instrument Serif', serif; font-weight: 400; }
-.login-copy > p:not(.eyebrow) { position: relative; max-width: 420px; margin: 46px 0 0; color: #d7d2c6; line-height: 1.6; }
+.login-page { min-height: 620px; display: grid; grid-template-columns: minmax(0, .47fr) minmax(0, .53fr); gap: 18px; }
+.login-copy, .google-auth-panel, .credentials-panel { border-radius: 24px; }
+.login-copy { position: relative; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); background: var(--sheet); color: var(--ink); padding: 52px; }
+.login-copy .eyebrow, .login-copy > span { position: relative; color: var(--muted); }
+.login-copy h1 { position: relative; max-width: 520px; margin: auto 0; font-size: clamp(4.2rem, 6.8vw, 7.4rem); letter-spacing: -.1em; line-height: .73; }
+.login-copy h1 em { color: var(--accent); font-family: 'Instrument Serif', serif; font-weight: 400; }
+.login-copy > p:not(.eyebrow) { position: relative; max-width: 335px; margin: 0; color: var(--muted); font-size: .93rem; line-height: 1.6; }
 .login-copy > span { margin-top: auto; font: .6rem 'DM Mono', monospace; letter-spacing: .07em; text-transform: uppercase; }
-.login-panel { display: flex; flex-direction: column; justify-content: center; padding: 56px; }
-.login-panel h2 { margin: 0 0 36px; font-size: clamp(3rem, 5vw, 5rem); letter-spacing: -.085em; line-height: .78; }
-.login-panel form { gap: 22px; }
+.login-auth-stack { min-width: 0; display: grid; grid-template-rows: minmax(390px, 1.65fr) minmax(180px, .72fr); gap: 18px; }
+.google-auth-panel, .credentials-panel { --login-inset: 13px; position: relative; isolation: isolate; }
+.google-auth-panel::before, .credentials-panel::before { position: absolute; z-index: 0; inset: var(--login-inset); border: 1px solid color-mix(in srgb, var(--sheet) 82%, transparent); border-radius: calc(24px - var(--login-inset)); content: ''; pointer-events: none; }
+.google-auth-panel > *, .credentials-panel > * { position: relative; z-index: 1; }
+.google-auth-panel { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; overflow: hidden; background: var(--accent); color: var(--sheet); padding: 60px 64px 44px; text-align: center; }
+.google-content { width: min(100%, 400px); }
+.google-auth-panel .eyebrow { width: 100%; margin: 0 0 22px; color: var(--sheet); text-align: left; }
+.google-heading { width: 100%; text-align: left; }
+.google-auth-panel h2 { margin: 0; font-size: clamp(3rem, 3.55vw, 3.55rem); letter-spacing: -.085em; line-height: .86; }
+.google-auth-panel h2 em { color: var(--sheet); -webkit-text-fill-color: var(--sheet); font-family: 'Instrument Serif', serif; font-weight: 400; opacity: 1; }
+.google-button-alignment { position: relative; width: 100%; display: flex; justify-content: flex-start; align-items: center; margin: 64px 0 17px; }
+.google-coming-soon { width: min(100%, 400px); min-height: 58px; display: flex; align-items: center; justify-content: center; gap: 13px; border: 1px solid color-mix(in srgb, var(--sheet) 70%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--sheet) 92%, transparent); color: color-mix(in srgb, var(--ink) 78%, var(--muted)); font: 600 .8rem 'DM Sans', sans-serif; cursor: not-allowed; opacity: .72; }
+.google-coming-soon:disabled { pointer-events: none; }
+.google-mark { display: grid; width: 24px; height: 24px; place-items: center; border-right: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); padding-right: 13px; color: var(--accent); font: 700 1.2rem 'DM Sans', sans-serif; }
+.google-help { width: 100%; max-width: none; margin: 0; color: color-mix(in srgb, var(--sheet) 86%, transparent); font-size: .72rem; line-height: 1.45; text-align: left; }
+.credentials-panel { min-width: 0; display: grid; align-content: center; gap: 17px; background: var(--night); padding: 28px 32px; color: var(--sheet); }
+.credentials-panel .eyebrow { display: flex; align-items: center; gap: 16px; margin: 0; color: #d7d2c6; }
+.credentials-panel .eyebrow::after { height: 1px; flex: 1; content: ''; background: #55534d; }
+.credential-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 9px; align-items: center; }
+.credential-row label { min-width: 0; display: block; }
+.credential-field { position: relative; display: block; }
+.credential-field svg { position: absolute; top: 50%; left: 12px; width: 16px; height: 16px; color: #d7d2c6; fill: none; pointer-events: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.3; transform: translateY(-50%); }
+.credential-row input { min-width: 0; border-color: #55534d; background: #252520; color: var(--sheet); padding: 10px 11px 10px 38px; }
+.credential-row input::placeholder { color: #9f9a8f; }
+.credential-row input:focus { border-color: var(--accent-secondary); box-shadow: 0 0 0 3px rgb(250 80 83 / .22); }
+.credential-submit { min-width: 128px; min-height: 40px; border-color: var(--accent); background: transparent; color: var(--sheet); padding: 9px 13px; font-size: .57rem; }
+.credential-submit:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--sheet); }
+.credentials-panel .error { max-width: none; margin: 0; font-size: .72rem; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.google-auth-panel :focus-visible, .credentials-panel :focus-visible { outline: 2px solid var(--sheet); outline-offset: 3px; }
 form { display: grid; gap: 16px; }
 label { display: grid; gap: 8px; color: var(--ink); font: 500 .65rem 'DM Mono', monospace; letter-spacing: .07em; text-transform: uppercase; }
 label small { color: var(--muted); font-size: .58rem; letter-spacing: .04em; text-transform: none; }
@@ -1351,10 +1378,18 @@ select { appearance: auto; }
   .pdf-presentation-controls { right: 16px; bottom: 43px; opacity: 1; transform: none; }
   .pdf-page-count { right: 17px; bottom: 17px; }
   .no-preview { padding: 42px 25px; }
-  .login-page, .profile-page { border-radius: 18px; }
+  .profile-page { border-radius: 18px; }
   .login-copy { min-height: 390px; padding: 36px 27px; }
   .login-copy h1 { font-size: clamp(4rem, 19vw, 5.4rem); }
-  .login-panel { padding: 37px 25px; }
+  .login-copy, .google-auth-panel, .credentials-panel { border-radius: 18px; }
+  .google-auth-panel, .credentials-panel { --login-inset: 10px; }
+  .google-auth-panel::before, .credentials-panel::before { border-radius: calc(18px - var(--login-inset)); }
+  .google-auth-panel { min-height: 370px; padding: 35px 24px; }
+  .google-auth-panel h2 { font-size: clamp(2.55rem, 11vw, 3.25rem); }
+  .google-button-alignment { margin: 48px 0 16px; }
+  .credentials-panel { min-height: 0; padding: 24px; }
+  .credential-row { grid-template-columns: 1fr; gap: 10px; }
+  .credential-submit { justify-self: start; min-width: 108px; }
   .workspace-form { padding: 18px; }
   .workspace-intro h1 { font-size: clamp(4rem, 18vw, 5.5rem); }
   .field-grid, .content-text-grid, .role-fields { grid-template-columns: 1fr; }
